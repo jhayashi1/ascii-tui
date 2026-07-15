@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,28 +15,33 @@ import (
 	"github.com/jhayashi1/ascii-tui/internal/pathutil"
 )
 
-// maxVisibleSuggestions is the fixed height of the completion list shown
-// under the path prompt.
-const maxVisibleSuggestions = 6
+const (
+	// maxVisibleSuggestions is the fixed height of the completion list
+	// shown under the path prompt.
+	maxVisibleSuggestions = 6
+	// Caps keeping the recursive gif search responsive in huge trees.
+	maxWalkDepth   = 6
+	maxWalkResults = 500
+	maxWalkVisits  = 20000
+)
 
 var (
 	suggestionFileStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	suggestionDirStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("75"))
 	suggestionMatchStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
 	suggestionMarkerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
 	suggestionEmptyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
 
 type pathSuggestion struct {
+	// name is the gif's path relative to the typed directory portion.
 	name string
-	dir  bool
 	// matches holds byte offsets into name that matched the fuzzy query.
 	matches []int
 }
 
-// pathInput is a text input with fzf-style completion over the
-// filesystem: it lists directories and .gif files in the directory
-// portion of the typed path, fuzzy-filtered by the partial name after
+// pathInput is a text input with fzf-style search over the filesystem:
+// it recursively finds .gif files under the directory portion of the
+// typed path and fuzzy-filters their relative paths by the text after
 // the last separator. A leading "~" expands to the home directory.
 type pathInput struct {
 	input textinput.Model
@@ -45,6 +51,11 @@ type pathInput struct {
 	suggestions []pathSuggestion
 	sel         int
 	offset      int
+	// walk cache: gifs found under walkRoot, so only keystrokes that
+	// change the directory portion trigger a re-scan.
+	walkRoot   string
+	walkHidden bool
+	walkNames  []string
 }
 
 func newPathInput() pathInput {
@@ -55,6 +66,7 @@ func newPathInput() pathInput {
 
 func (p *pathInput) focus() tea.Cmd {
 	p.input.SetValue("")
+	p.walkNames = nil
 	p.refresh()
 	return p.input.Focus()
 }
@@ -74,9 +86,9 @@ func (p pathInput) update(msg tea.Msg) (pathInput, tea.Cmd) {
 }
 
 // splitPathPrefix splits the typed value into the directory portion
-// (including the trailing separator) and the partial name being
-// completed. A bare "~" is treated as the home directory itself.
-func splitPathPrefix(raw string) (prefix, partial string) {
+// (including the trailing separator) and the fuzzy query after it. A
+// bare "~" is treated as the home directory itself.
+func splitPathPrefix(raw string) (prefix, query string) {
 	if i := strings.LastIndexAny(raw, `/\`); i >= 0 {
 		return raw[:i+1], raw[i+1:]
 	}
@@ -89,58 +101,78 @@ func splitPathPrefix(raw string) (prefix, partial string) {
 // refresh recomputes the completion candidates for the current input.
 func (p *pathInput) refresh() {
 	p.sel, p.offset = 0, 0
-	prefix, partial := splitPathPrefix(p.input.Value())
+	prefix, query := splitPathPrefix(p.input.Value())
 	p.dirPrefix = prefix
 
-	scanDir := pathutil.ExpandTilde(prefix)
-	if scanDir == "" {
-		scanDir = "."
+	root := pathutil.ExpandTilde(prefix)
+	if root == "" {
+		root = "."
 	}
-	entries, err := os.ReadDir(scanDir)
-	if err != nil {
-		p.suggestions = nil
-		return
-	}
-
-	var names []string
-	isDir := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasPrefix(name, ".") && !strings.HasPrefix(partial, ".") {
-			continue
-		}
-		dir := e.IsDir()
-		if !dir && e.Type()&os.ModeSymlink != 0 {
-			if fi, err := os.Stat(filepath.Join(scanDir, name)); err == nil {
-				dir = fi.IsDir()
-			}
-		}
-		if !dir && !strings.EqualFold(filepath.Ext(name), ".gif") {
-			continue
-		}
-		names = append(names, name)
-		isDir[name] = dir
+	hidden := strings.HasPrefix(query, ".")
+	if p.walkNames == nil || root != p.walkRoot || hidden != p.walkHidden {
+		p.walkRoot, p.walkHidden = root, hidden
+		p.walkNames = findGifs(root, hidden)
 	}
 
-	if partial == "" {
-		sort.SliceStable(names, func(i, j int) bool {
-			if isDir[names[i]] != isDir[names[j]] {
-				return isDir[names[i]]
-			}
-			return strings.ToLower(names[i]) < strings.ToLower(names[j])
-		})
-		p.suggestions = make([]pathSuggestion, len(names))
-		for i, name := range names {
-			p.suggestions[i] = pathSuggestion{name: name, dir: isDir[name]}
+	if query == "" {
+		p.suggestions = make([]pathSuggestion, len(p.walkNames))
+		for i, name := range p.walkNames {
+			p.suggestions[i] = pathSuggestion{name: name}
 		}
 		return
 	}
 
-	matches := fuzzy.Find(partial, names)
+	matches := fuzzy.Find(query, p.walkNames)
 	p.suggestions = make([]pathSuggestion, len(matches))
 	for i, m := range matches {
-		p.suggestions[i] = pathSuggestion{name: m.Str, dir: isDir[m.Str], matches: m.MatchedIndexes}
+		p.suggestions[i] = pathSuggestion{name: m.Str, matches: m.MatchedIndexes}
 	}
+}
+
+// findGifs walks root up to maxWalkDepth levels deep and returns the
+// relative paths of the .gif files it finds, shallowest first. Hidden
+// entries are skipped unless includeHidden is set, and the walk is
+// capped so typing in a huge tree stays responsive.
+func findGifs(root string, includeHidden bool) []string {
+	names := []string{}
+	visited := 0
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || path == root {
+			return nil
+		}
+		if visited++; visited > maxWalkVisits || len(names) >= maxWalkResults {
+			return fs.SkipAll
+		}
+		if !includeHidden && strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if strings.Count(rel, string(os.PathSeparator)) >= maxWalkDepth-1 {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if strings.EqualFold(filepath.Ext(d.Name()), ".gif") {
+			names = append(names, rel)
+		}
+		return nil
+	})
+	sort.SliceStable(names, func(i, j int) bool {
+		di := strings.Count(names[i], string(os.PathSeparator))
+		dj := strings.Count(names[j], string(os.PathSeparator))
+		if di != dj {
+			return di < dj
+		}
+		return strings.ToLower(names[i]) < strings.ToLower(names[j])
+	})
+	return names
 }
 
 func (p *pathInput) moveSelection(delta int) {
@@ -157,33 +189,21 @@ func (p *pathInput) moveSelection(delta int) {
 	}
 }
 
-// complete fills the input with the selected suggestion. Completing a
-// directory descends into it and re-scans; completing a gif leaves its
-// full path in the input.
+// complete fills the input with the full path of the selected gif.
 func (p *pathInput) complete() {
 	if p.sel >= len(p.suggestions) {
 		return
 	}
-	s := p.suggestions[p.sel]
-	value := p.dirPrefix + s.name
-	if s.dir {
-		value += string(os.PathSeparator)
-	}
-	p.input.SetValue(value)
+	p.input.SetValue(p.dirPrefix + p.suggestions[p.sel].name)
 	p.input.CursorEnd()
 	p.refresh()
 }
 
-// accept resolves enter: a selected directory is descended into (and
-// ok is false), while a selected gif — or, with no suggestions, the
-// literal typed text — yields the tilde-expanded path to render.
+// accept resolves enter: the selected gif — or, with no suggestions,
+// the literal typed text — yields the tilde-expanded path to render.
 func (p *pathInput) accept() (path string, ok bool) {
 	if len(p.suggestions) > 0 {
-		dir := p.suggestions[p.sel].dir
 		p.complete()
-		if dir {
-			return "", false
-		}
 		return pathutil.ExpandTilde(p.input.Value()), true
 	}
 	value := strings.TrimSpace(p.input.Value())
@@ -205,7 +225,7 @@ func (p pathInput) view() string {
 		b.WriteByte('\n')
 	}
 	if len(p.suggestions) == 0 && strings.TrimSpace(p.input.Value()) != "" {
-		b.WriteString(suggestionEmptyStyle.Render("    no matching gifs or directories"))
+		b.WriteString(suggestionEmptyStyle.Render("    no matching gifs"))
 		b.WriteByte('\n')
 		end++
 	}
@@ -221,14 +241,8 @@ func (p pathInput) suggestionRow(i int) string {
 	if i == p.sel {
 		marker = "  " + suggestionMarkerStyle.Render("▸ ")
 	}
-	base := suggestionFileStyle
-	name := s.name
-	if s.dir {
-		base = suggestionDirStyle
-		name += string(os.PathSeparator)
-	}
-	name = truncateRunes(name, max(4, p.input.Width-4))
-	return marker + renderMatched(name, s.matches, base)
+	name := truncateRunes(s.name, max(4, p.input.Width-4))
+	return marker + renderMatched(name, s.matches, suggestionFileStyle)
 }
 
 // renderMatched styles name rune by rune so the fuzzy-matched positions

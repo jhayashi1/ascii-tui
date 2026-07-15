@@ -167,7 +167,7 @@ func (g galleryModel) view() string {
 	b.WriteByte('\n')
 	if g.typing {
 		b.WriteString(g.picker.view())
-		b.WriteString(helpStyle.Render("[enter] render/open  [tab] complete  [↑/↓] select  [esc] cancel"))
+		b.WriteString(helpStyle.Render("[enter] render  [tab] complete  [↑/↓] select  [esc] cancel"))
 		return b.String()
 	}
 	if g.status != "" {
