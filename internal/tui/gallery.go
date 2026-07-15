@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -24,14 +25,26 @@ func (e entryItem) Title() string       { return e.Name }
 func (e entryItem) Description() string { return e.Path }
 func (e entryItem) FilterValue() string { return e.Name }
 
+// inputMode says what the gallery is collecting text for: a gif path
+// (through the completing picker) or a new entry name (plain input).
+type inputMode int
+
+const (
+	inputNone inputMode = iota
+	inputAddGIF
+	inputRename
+)
+
 type galleryModel struct {
-	dir    string
-	list   list.Model
-	picker pathInput
-	typing bool
-	status string
-	width  int
-	height int
+	dir        string
+	list       list.Model
+	picker     pathInput
+	input      textinput.Model
+	mode       inputMode
+	renamePath string
+	status     string
+	width      int
+	height     int
 }
 
 func newGallery(dir string) (galleryModel, error) {
@@ -42,7 +55,7 @@ func newGallery(dir string) (galleryModel, error) {
 	l.SetStatusBarItemName("animation", "animations")
 	l.DisableQuitKeybindings()
 
-	g := galleryModel{dir: dir, list: l, picker: newPathInput()}
+	g := galleryModel{dir: dir, list: l, picker: newPathInput(), input: textinput.New()}
 	if err := g.reload(); err != nil {
 		return g, err
 	}
@@ -74,6 +87,7 @@ func (g *galleryModel) entries() []library.Entry {
 func (g *galleryModel) setSize(width, height int) {
 	g.width, g.height = width, height
 	g.picker.setWidth(max(10, width-8))
+	g.input.Width = max(10, width-8)
 	g.layout()
 }
 
@@ -81,20 +95,21 @@ func (g *galleryModel) setSize(width, height int) {
 // the path prompt is open so the view height stays constant.
 func (g *galleryModel) layout() {
 	reserved := 3
-	if g.typing {
+	if g.mode == inputAddGIF {
 		reserved += maxVisibleSuggestions
 	}
 	g.list.SetSize(g.width, max(0, g.height-reserved))
 }
 
 func (g *galleryModel) stopTyping() {
-	g.typing = false
+	g.mode = inputNone
 	g.picker.blur()
+	g.input.Blur()
 	g.layout()
 }
 
 func (g galleryModel) update(msg tea.Msg) (galleryModel, tea.Cmd) {
-	if g.typing {
+	if g.mode != inputNone {
 		return g.updateTyping(msg)
 	}
 
@@ -110,10 +125,21 @@ func (g galleryModel) update(msg tea.Msg) (galleryModel, tea.Cmd) {
 				return g, func() tea.Msg { return playEntryMsg{entries: entries, index: index} }
 			}
 		case "a":
-			g.typing = true
+			g.mode = inputAddGIF
 			g.status = ""
 			g.layout()
 			return g, g.picker.focus()
+		case "r":
+			if item, ok := g.list.SelectedItem().(entryItem); ok {
+				g.mode = inputRename
+				g.renamePath = item.Path
+				g.status = ""
+				g.input.SetValue(item.Name)
+				g.input.CursorEnd()
+				g.layout()
+				return g, g.input.Focus()
+			}
+			return g, nil
 		case "d":
 			if item, ok := g.list.SelectedItem().(entryItem); ok {
 				if err := os.Remove(item.Path); err != nil {
@@ -132,6 +158,10 @@ func (g galleryModel) update(msg tea.Msg) (galleryModel, tea.Cmd) {
 }
 
 func (g galleryModel) updateTyping(msg tea.Msg) (galleryModel, tea.Cmd) {
+	if g.mode == inputRename {
+		return g.updateRenaming(msg)
+	}
+
 	if key, ok := msg.(tea.KeyMsg); ok {
 		switch key.String() {
 		case "enter":
@@ -161,18 +191,65 @@ func (g galleryModel) updateTyping(msg tea.Msg) (galleryModel, tea.Cmd) {
 	return g, cmd
 }
 
+func (g galleryModel) updateRenaming(msg tea.Msg) (galleryModel, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "enter":
+			name := strings.TrimSpace(g.input.Value())
+			g.stopTyping()
+			if name == "" {
+				return g, nil
+			}
+			return g.commitRename(name)
+		case "esc":
+			g.stopTyping()
+			return g, nil
+		}
+	}
+
+	var cmd tea.Cmd
+	g.input, cmd = g.input.Update(msg)
+	return g, cmd
+}
+
+// commitRename renames the selected entry and keeps it selected, since
+// entries are listed by name and the rename can reorder them.
+func (g galleryModel) commitRename(newName string) (galleryModel, tea.Cmd) {
+	newPath, err := library.Rename(g.renamePath, newName)
+	if err != nil {
+		g.status = fmt.Sprintf("rename failed: %v", err)
+		return g, nil
+	}
+	if err := g.reload(); err != nil {
+		g.status = err.Error()
+		return g, nil
+	}
+	for i, item := range g.list.Items() {
+		if item.(entryItem).Path == newPath {
+			g.list.Select(i)
+			break
+		}
+	}
+	return g, nil
+}
+
 func (g galleryModel) view() string {
 	var b strings.Builder
 	b.WriteString(g.list.View())
 	b.WriteByte('\n')
-	if g.typing {
+	switch g.mode {
+	case inputAddGIF:
 		b.WriteString(g.picker.view())
 		b.WriteString(helpStyle.Render("[enter] render  [tab] complete  [↑/↓] select  [esc] cancel"))
+		return b.String()
+	case inputRename:
+		b.WriteString(promptStyle.Render("rename to: "+g.input.View()) + "\n")
+		b.WriteString(helpStyle.Render("[enter] rename  [esc] cancel"))
 		return b.String()
 	}
 	if g.status != "" {
 		b.WriteString(statusStyle.Render(g.status) + "\n")
 	}
-	b.WriteString(helpStyle.Render("[enter] play  [a] add gif  [d] delete  [/] filter  [q] quit"))
+	b.WriteString(helpStyle.Render("[enter] play  [a] add gif  [r] rename  [d] delete  [/] filter  [q] quit"))
 	return b.String()
 }
