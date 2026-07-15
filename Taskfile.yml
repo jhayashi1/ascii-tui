@@ -32,3 +32,8 @@ tasks:
       - task: fmt
       - task: lint
       - task: test
+
+  hooks:install:
+    desc: Install git hooks (runs lint before each commit)
+    cmds:
+      - git config core.hooksPath .githooks

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Runs golangci-lint before allowing a commit.
+# Enabled via `task hooks:install` (sets core.hooksPath to .githooks).
+
+if ! command -v golangci-lint >/dev/null 2>&1; then
+	echo "pre-commit: golangci-lint not found in PATH, skipping lint check"
+	exit 0
+fi
+
+golangci-lint run

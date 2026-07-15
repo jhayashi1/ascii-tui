@@ -66,9 +66,10 @@ Requires Go (see `go.mod`), [Task](https://taskfile.dev), and
 [golangci-lint](https://golangci-lint.run).
 
 ```sh
-task check   # format, lint, test
-task build   # build into bin/
+task check          # format, lint, test
+task build          # build into bin/
 task run -- play testdata/giphy.gif
+task hooks:install  # run lint before each commit
 ```
 
 ## How it works
