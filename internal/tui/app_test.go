@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -44,6 +45,8 @@ func fixtureModel(t *testing.T) model {
 
 // step applies a message and then keeps applying any messages produced
 // by returned non-tick commands, mimicking the Bubble Tea runtime.
+// Frame ticks and cursor blinks are self-rescheduling, so following
+// them would loop forever.
 func step(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	updated, cmd := m.Update(msg)
@@ -119,6 +122,45 @@ func TestPlayerPauseAndTick(t *testing.T) {
 	m = step(t, m, frameTickMsg{gen: staleGen})
 	if m.player.frame != 1 {
 		t.Errorf("stale tick advanced frame to %d", m.player.frame)
+	}
+}
+
+func TestGalleryAddPromptTypesAndCancels(t *testing.T) {
+	m := fixtureModel(t)
+
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if m.gallery.mode != inputAddGIF {
+		t.Fatal("gallery not in add-gif mode after 'a'")
+	}
+
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if m.screen != screenGallery || m.gallery.mode != inputAddGIF {
+		t.Fatal("'q' while typing quit the prompt instead of inserting text")
+	}
+	if got := m.gallery.picker.input.Value(); got != "q" {
+		t.Errorf("input value = %q, want %q", got, "q")
+	}
+
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.gallery.mode != inputNone {
+		t.Error("gallery still typing after esc")
+	}
+}
+
+func TestGalleryAddPromptExpandsTilde(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	m := step(t, fixtureModel(t), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("~/nope.gif")})
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	if m.screen != screenRendering {
+		t.Fatalf("screen after enter = %v, want rendering", m.screen)
+	}
+	if want := filepath.Join(home, "nope.gif"); m.render.gifPath != want {
+		t.Errorf("render path = %q, want %q", m.render.gifPath, want)
 	}
 }
 
