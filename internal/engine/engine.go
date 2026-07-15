@@ -89,10 +89,10 @@ func Render(r io.Reader, opts Options, onProgress func(done, total int)) (*frame
 	}
 
 	return &frames.Animation{
-		Width:      cols,
-		Height:     rows,
-		Frames:     rendered,
-		Delays:     delays,
+		Width:            cols,
+		Height:           rows,
+		Frames:           rendered,
+		Delays:           delays,
 		Colored:          opts.Colored,
 		Complex:          opts.Complex,
 		FilterBackground: opts.FilterBackground,
