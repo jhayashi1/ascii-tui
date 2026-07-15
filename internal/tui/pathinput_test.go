@@ -6,15 +6,15 @@ import (
 	"testing"
 )
 
-// fixtureGifDir builds a directory with a mix of gifs, a subdirectory,
-// and files the completer should ignore.
+// fixtureGifDir builds a directory with gifs at two levels plus files
+// the completer should ignore.
 func fixtureGifDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "clips"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"party.gif", "cat.GIF", "notes.txt", ".hidden.gif"} {
+	for _, name := range []string{"party.gif", "cat.GIF", "notes.txt", ".hidden.gif", "clips/nested.gif"} {
 		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -30,13 +30,17 @@ func suggestionNames(p pathInput) []string {
 	return names
 }
 
-func TestPathInputListsDirsAndGifsOnly(t *testing.T) {
+func setPickerValue(p *pathInput, value string) {
+	p.input.SetValue(value)
+	p.refresh()
+}
+
+func TestPathInputListsGifsRecursively(t *testing.T) {
 	dir := fixtureGifDir(t)
 	p := newPathInput()
-	p.input.SetValue(dir + string(os.PathSeparator))
-	p.refresh()
+	setPickerValue(&p, dir+string(os.PathSeparator))
 
-	want := []string{"clips", "cat.GIF", "party.gif"}
+	want := []string{"cat.GIF", "party.gif", filepath.Join("clips", "nested.gif")}
 	got := suggestionNames(p)
 	if len(got) != len(want) {
 		t.Fatalf("suggestions = %v, want %v", got, want)
@@ -46,16 +50,12 @@ func TestPathInputListsDirsAndGifsOnly(t *testing.T) {
 			t.Errorf("suggestion[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
-	if !p.suggestions[0].dir {
-		t.Error("clips not marked as directory")
-	}
 }
 
 func TestPathInputFuzzyFilters(t *testing.T) {
 	dir := fixtureGifDir(t)
 	p := newPathInput()
-	p.input.SetValue(filepath.Join(dir, "pty"))
-	p.refresh()
+	setPickerValue(&p, filepath.Join(dir, "pty"))
 
 	got := suggestionNames(p)
 	if len(got) != 1 || got[0] != "party.gif" {
@@ -66,11 +66,21 @@ func TestPathInputFuzzyFilters(t *testing.T) {
 	}
 }
 
+func TestPathInputFuzzyMatchesNestedGifs(t *testing.T) {
+	dir := fixtureGifDir(t)
+	p := newPathInput()
+	setPickerValue(&p, filepath.Join(dir, "nested"))
+
+	got := suggestionNames(p)
+	if want := filepath.Join("clips", "nested.gif"); len(got) != 1 || got[0] != want {
+		t.Fatalf("fuzzy suggestions for \"nested\" = %v, want [%s]", got, want)
+	}
+}
+
 func TestPathInputShowsHiddenWhenAskedFor(t *testing.T) {
 	dir := fixtureGifDir(t)
 	p := newPathInput()
-	p.input.SetValue(filepath.Join(dir, ".h"))
-	p.refresh()
+	setPickerValue(&p, filepath.Join(dir, ".h"))
 
 	got := suggestionNames(p)
 	if len(got) != 1 || got[0] != ".hidden.gif" {
@@ -78,27 +88,22 @@ func TestPathInputShowsHiddenWhenAskedFor(t *testing.T) {
 	}
 }
 
-func TestPathInputCompleteDescendsIntoDirectory(t *testing.T) {
+func TestPathInputCompleteFillsNestedPath(t *testing.T) {
 	dir := fixtureGifDir(t)
 	p := newPathInput()
-	p.input.SetValue(filepath.Join(dir, "cl"))
-	p.refresh()
+	setPickerValue(&p, filepath.Join(dir, "cl"))
 
 	p.complete()
-	want := filepath.Join(dir, "clips") + string(os.PathSeparator)
+	want := filepath.Join(dir, "clips", "nested.gif")
 	if got := p.input.Value(); got != want {
-		t.Fatalf("value after completing directory = %q, want %q", got, want)
-	}
-	if len(p.suggestions) != 0 {
-		t.Errorf("expected empty suggestions inside empty dir, got %v", suggestionNames(p))
+		t.Fatalf("value after complete = %q, want %q", got, want)
 	}
 }
 
 func TestPathInputAcceptGif(t *testing.T) {
 	dir := fixtureGifDir(t)
 	p := newPathInput()
-	p.input.SetValue(filepath.Join(dir, "party"))
-	p.refresh()
+	setPickerValue(&p, filepath.Join(dir, "party"))
 
 	path, ok := p.accept()
 	if !ok {
@@ -109,29 +114,13 @@ func TestPathInputAcceptGif(t *testing.T) {
 	}
 }
 
-func TestPathInputAcceptDirectoryDescends(t *testing.T) {
-	dir := fixtureGifDir(t)
-	p := newPathInput()
-	p.input.SetValue(filepath.Join(dir, "clips"))
-	p.refresh()
-
-	if _, ok := p.accept(); ok {
-		t.Fatal("accept on directory suggestion returned ok=true")
-	}
-	want := filepath.Join(dir, "clips") + string(os.PathSeparator)
-	if got := p.input.Value(); got != want {
-		t.Errorf("value after accepting directory = %q, want %q", got, want)
-	}
-}
-
 func TestPathInputTildeCompletion(t *testing.T) {
 	home := fixtureGifDir(t)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
 	p := newPathInput()
-	p.input.SetValue("~")
-	p.refresh()
+	setPickerValue(&p, "~")
 
 	got := suggestionNames(p)
 	if len(got) != 3 {
@@ -139,7 +128,7 @@ func TestPathInputTildeCompletion(t *testing.T) {
 	}
 
 	p.complete()
-	want := "~" + string(os.PathSeparator) + "clips" + string(os.PathSeparator)
+	want := "~" + string(os.PathSeparator) + "cat.GIF"
 	if got := p.input.Value(); got != want {
 		t.Errorf("value after completing under ~ = %q, want %q", got, want)
 	}
@@ -151,8 +140,7 @@ func TestPathInputAcceptExpandsTypedTilde(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	p := newPathInput()
-	p.input.SetValue("~/party.gif")
-	p.refresh()
+	setPickerValue(&p, "~/party.gif")
 
 	path, ok := p.accept()
 	if !ok {
@@ -166,8 +154,7 @@ func TestPathInputAcceptExpandsTypedTilde(t *testing.T) {
 func TestPathInputSelectionWraps(t *testing.T) {
 	dir := fixtureGifDir(t)
 	p := newPathInput()
-	p.input.SetValue(dir + string(os.PathSeparator))
-	p.refresh()
+	setPickerValue(&p, dir+string(os.PathSeparator))
 
 	p.moveSelection(-1)
 	if p.sel != len(p.suggestions)-1 {
@@ -176,5 +163,25 @@ func TestPathInputSelectionWraps(t *testing.T) {
 	p.moveSelection(1)
 	if p.sel != 0 {
 		t.Errorf("sel after wrap down = %d, want 0", p.sel)
+	}
+}
+
+func TestPathInputDepthCap(t *testing.T) {
+	dir := t.TempDir()
+	deep := dir
+	for range maxWalkDepth + 1 {
+		deep = filepath.Join(deep, "d")
+	}
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(deep, "far.gif"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := newPathInput()
+	setPickerValue(&p, dir+string(os.PathSeparator))
+	if got := suggestionNames(p); len(got) != 0 {
+		t.Errorf("gif beyond depth cap suggested: %v", got)
 	}
 }

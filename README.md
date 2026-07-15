@@ -34,11 +34,12 @@ In the gallery: `enter` plays the selected animation, `a` renders a new gif,
 `d` deletes an entry, `/` filters. In the player: `space` pauses, `left`/`right`
 switch between animations, `esc` returns to the gallery.
 
-The `a` prompt has fzf-style fuzzy completion: as you type a path it lists
-matching directories and `.gif` files, `tab` completes the selection,
-`up`/`down` (or `ctrl+p`/`ctrl+n`) move through the matches, and `enter`
-descends into a directory or renders the chosen gif. Paths starting with `~`
-expand to your home directory, both here and in CLI arguments.
+The `a` prompt has fzf-style fuzzy search: it recursively finds `.gif` files
+under the directory portion of the typed path (a few levels deep) and filters
+them as you type. `tab` completes the selection, `up`/`down` (or
+`ctrl+p`/`ctrl+n`) move through the matches, and `enter` renders the chosen
+gif. Paths starting with `~` expand to your home directory, both here and in
+CLI arguments.
 
 ### Cross-machine playback
 
