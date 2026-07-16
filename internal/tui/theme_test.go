@@ -51,17 +51,31 @@ func TestRenderColumnClampsOverflow(t *testing.T) {
 
 func TestHeaderLineFitsWidth(t *testing.T) {
 	st := defaultStyles()
-	got := headerLine("▸", "bongo-cat", "80x24 · 42 frames · bongo.gif", 40, st)
-	if w := lipgloss.Width(got); w > 40 {
-		t.Errorf("header width = %d, want <= 40 (%q)", w, got)
+	got := headerLine("bongo-cat", 40, st)
+	if w := lipgloss.Width(got); w != 40 {
+		t.Errorf("header width = %d, want 40 (%q)", w, got)
 	}
 	if !strings.Contains(got, "bongo-cat") {
 		t.Errorf("header missing name: %q", got)
 	}
+	if !strings.Contains(got, brandIcon) || !strings.Contains(got, brandName) {
+		t.Errorf("header missing wordmark: %q", got)
+	}
 
-	tight := headerLine("▸", strings.Repeat("n", 50), "meta", 12, st)
+	empty := headerLine("", 40, st)
+	if w := lipgloss.Width(empty); w != 40 {
+		t.Errorf("empty-name header width = %d, want 40 (%q)", w, empty)
+	}
+	if !strings.Contains(empty, brandName) {
+		t.Errorf("empty-name header missing wordmark: %q", empty)
+	}
+
+	tight := headerLine(strings.Repeat("n", 50), 12, st)
 	if w := lipgloss.Width(tight); w > 12 {
 		t.Errorf("tight header width = %d, want <= 12 (%q)", w, tight)
+	}
+	if strings.Contains(tight, brandName) {
+		t.Errorf("wordmark should drop before the name at tight width: %q", tight)
 	}
 }
 

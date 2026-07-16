@@ -413,18 +413,14 @@ func (g galleryModel) view() string {
 	return body + "\n" + g.statusBar()
 }
 
-// middleContent stacks the tuxedo-style header line (glyph, name, dim
-// metadata) above the centered preview frame.
+// middleContent stacks the header line (selection glyph and name on the
+// left, app wordmark on the right) above the centered preview frame.
 func (g galleryModel) middleContent(width int) string {
-	var header string
+	name := ""
 	if entry, ok := g.selectedEntry(); ok {
-		metaText := ""
-		if meta, ok := g.preview.currentMeta(); ok {
-			metaText = fmt.Sprintf("%dx%d · %s · %s", meta.width, meta.height, plural(meta.frames, "frame"), meta.source)
-		}
-		header = headerLine("▸", entry.Name, metaText, width, g.st)
+		name = entry.Name
 	}
-	return header + "\n\n" + g.preview.view()
+	return headerLine(name, width, g.st) + "\n\n" + g.preview.view()
 }
 
 func (g galleryModel) detailContent(width int) string {
@@ -467,7 +463,7 @@ func (g galleryModel) statusBar() string {
 	if g.status != "" {
 		middle, middleStyle = g.status, g.st.status
 	}
-	status := plural(len(g.list.Items()), "animation") + " · ascii-tui"
+	status := plural(len(g.list.Items()), "animation") + " · " + brandName
 	return renderStatusBar(chipStyle, chipLabel, middle, middleStyle, status, g.width, g.st)
 }
 

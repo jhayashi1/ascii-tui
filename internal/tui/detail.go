@@ -17,15 +17,13 @@ func renderDetail(meta entryMeta, width int, st styles) string {
 		kvRow("length", formatDuration(meta.length), width, st),
 		kvRow("source", meta.source, width, st),
 		kvRow("filter", onOff(meta.filter), width, st),
-		kvRow("colored", yesNo(meta.colored), width, st),
-		kvRow("complex", yesNo(meta.complex), width, st),
 	}
 	if meta.ramp != "" {
 		rows = append(rows, kvRow("ramp", meta.ramp, width, st))
 	}
 
 	rows = append(rows, "", sectionRule("file", width, st))
-	rows = append(rows, wrapDim(meta.path, width, 3, st)...)
+	rows = append(rows, pathRows(meta.path, width, 3, st)...)
 	bytesText, modifiedText := "-", "-"
 	if meta.fileSize > 0 {
 		bytesText = formatBytes(meta.fileSize)
@@ -40,22 +38,29 @@ func renderDetail(meta entryMeta, width int, st styles) string {
 	return strings.Join(rows, "\n")
 }
 
-// wrapDim hard-wraps s into at most maxLines dim-styled lines of width
-// columns; anything longer is cut.
-func wrapDim(s string, width, maxLines int, st styles) []string {
-	if width < 1 {
+// pathRows renders the entry's on-disk path as at most maxLines rows: a
+// dim "path" label prefixes the first line, with the path itself in
+// normal text hard-wrapped across the rest; anything longer is cut.
+func pathRows(s string, width, maxLines int, st styles) []string {
+	const label = "path "
+	if width <= len(label) || maxLines < 1 {
 		return nil
 	}
-	var lines []string
-	for s != "" && len(lines) < maxLines {
+	first := truncateLabel(s, width-len(label))
+	if first == "" {
+		return nil
+	}
+	rows := []string{st.metaKey.Render(label) + st.metaValue.Render(first)}
+	s = s[len(first):]
+	for s != "" && len(rows) < maxLines {
 		line := truncateLabel(s, width)
 		if line == "" {
 			break
 		}
-		lines = append(lines, st.dim.Render(line))
+		rows = append(rows, st.metaValue.Render(line))
 		s = s[len(line):]
 	}
-	return lines
+	return rows
 }
 
 func formatBytes(n int64) string {
@@ -67,11 +72,4 @@ func formatBytes(n int64) string {
 	default:
 		return fmt.Sprintf("%d B", n)
 	}
-}
-
-func yesNo(b bool) string {
-	if b {
-		return "yes"
-	}
-	return "no"
 }
