@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -37,6 +38,7 @@ type galleryModel struct {
 	renamePath string
 	status     string
 	st         styles
+	keys       galleryKeyMap
 	width      int
 	height     int
 }
@@ -49,7 +51,7 @@ func newGallery(dir string, st styles) (galleryModel, error) {
 	l.SetStatusBarItemName("animation", "animations")
 	l.DisableQuitKeybindings()
 
-	g := galleryModel{dir: dir, list: l, picker: newPathInput(st), input: textinput.New(), st: st}
+	g := galleryModel{dir: dir, list: l, picker: newPathInput(st), input: textinput.New(), st: st, keys: newGalleryKeyMap()}
 	if err := g.reload(); err != nil {
 		return g, err
 	}
@@ -107,23 +109,23 @@ func (g galleryModel) update(msg tea.Msg) (galleryModel, tea.Cmd) {
 		return g.updateTyping(msg)
 	}
 
-	if key, ok := msg.(tea.KeyMsg); ok && g.list.FilterState() != list.Filtering {
-		switch key.String() {
-		case "q", "ctrl+c":
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && g.list.FilterState() != list.Filtering {
+		switch {
+		case key.Matches(keyMsg, g.keys.Quit):
 			return g, tea.Quit
-		case "enter":
+		case key.Matches(keyMsg, g.keys.Play):
 			// GlobalIndex maps the selection back into the full item
 			// slice even when a filter is applied.
 			if index := g.list.GlobalIndex(); index >= 0 && index < len(g.list.Items()) {
 				entries := g.entries()
 				return g, func() tea.Msg { return playEntryMsg{entries: entries, index: index} }
 			}
-		case "a":
+		case key.Matches(keyMsg, g.keys.Add):
 			g.mode = inputAddGIF
 			g.status = ""
 			g.layout()
 			return g, g.picker.focus()
-		case "r":
+		case key.Matches(keyMsg, g.keys.Rename):
 			if item, ok := g.list.SelectedItem().(entryItem); ok {
 				g.mode = inputRename
 				g.renamePath = item.Path
@@ -134,7 +136,7 @@ func (g galleryModel) update(msg tea.Msg) (galleryModel, tea.Cmd) {
 				return g, g.input.Focus()
 			}
 			return g, nil
-		case "d":
+		case key.Matches(keyMsg, g.keys.Delete):
 			if item, ok := g.list.SelectedItem().(entryItem); ok {
 				if err := os.Remove(item.Path); err != nil {
 					g.status = fmt.Sprintf("delete failed: %v", err)

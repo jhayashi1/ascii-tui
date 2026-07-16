@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -39,6 +40,7 @@ type playerModel struct {
 	paused  bool
 	err     error
 	st      styles
+	keys    playerKeyMap
 	width   int
 	height  int
 	// refitGen invalidates pending debounce timers and in-flight
@@ -48,7 +50,7 @@ type playerModel struct {
 }
 
 func newPlayer(entries []library.Entry, index int, st styles) (playerModel, tea.Cmd) {
-	p := playerModel{entries: entries, index: index, st: st}
+	p := playerModel{entries: entries, index: index, st: st, keys: newPlayerKeyMap()}
 	p.load()
 	return p, p.tickCmd()
 }
@@ -205,20 +207,20 @@ func (p playerModel) update(msg tea.Msg) (playerModel, tea.Cmd) {
 		return p, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
+		switch {
+		case key.Matches(msg, p.keys.Quit):
 			return p, tea.Quit
-		case "esc":
+		case key.Matches(msg, p.keys.Back):
 			return p, func() tea.Msg { return backToGalleryMsg{} }
-		case " ":
+		case key.Matches(msg, p.keys.Pause):
 			p.paused = !p.paused
 			p.gen++
 			return p, p.tickCmd()
-		case "left", "h":
+		case key.Matches(msg, p.keys.Prev):
 			return p.switchTo(p.index - 1)
-		case "right", "l":
+		case key.Matches(msg, p.keys.Next):
 			return p.switchTo(p.index + 1)
-		case "f":
+		case key.Matches(msg, p.keys.Filter):
 			if p.anim == nil || p.anim.SourceGIF == nil {
 				return p, nil
 			}
@@ -272,7 +274,7 @@ func (p playerModel) view() string {
 	if p.refitting {
 		state += "  fitting..."
 	}
-	status := fmt.Sprintf("%s  %d/%d%s  [space] pause  [<-/->] switch  [f] filter bg  [esc] back  [q] quit",
+	status := fmt.Sprintf("%s  %d/%d%s  [space] pause  [n/p] switch  [f] filter bg  [esc] back  [q] quit",
 		name, p.frame+1, len(p.anim.Frames), state)
 
 	var b strings.Builder

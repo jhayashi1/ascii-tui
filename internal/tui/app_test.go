@@ -90,12 +90,12 @@ func TestPlayerNavigationAndBack(t *testing.T) {
 		t.Fatalf("initial entry = %q, want first", got)
 	}
 
-	m = step(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	m = step(t, m, keyRune('n'))
 	if got := m.player.entries[m.player.index].Name; got != "second" {
-		t.Errorf("entry after right = %q, want second", got)
+		t.Errorf("entry after n = %q, want second", got)
 	}
 
-	m = step(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	m = step(t, m, keyRune('n'))
 	if got := m.player.entries[m.player.index].Name; got != "first" {
 		t.Errorf("entry after wraparound = %q, want first", got)
 	}
