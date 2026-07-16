@@ -34,9 +34,9 @@ ascii-tui play animation.frames --once --speed 2
 ```
 
 The gallery is a three-column layout: the library list on the left, a live
-preview of the selected entry in the middle (with a header showing its name,
-dimensions, frame count, and source), and a detail column on the right with
-the full metadata (length, render options, file size, modified time). On
+preview of the selected entry in the middle (with a header line showing its
+name and the ramp wordmark), and a detail column on the right with the full
+metadata (dimensions, length, source, file path, size, modified time). On
 narrower terminals the detail column drops first, then the preview (under 56
 columns or 12 rows), leaving a full-width list. The status bar at the bottom
 shows the current mode, key hints, and the library summary. Press `?` on

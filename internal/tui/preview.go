@@ -48,8 +48,6 @@ type entryMeta struct {
 	length   time.Duration
 	source   string
 	filter   bool
-	colored  bool
-	complex  bool
 	ramp     string
 	path     string
 	fileSize int64
@@ -64,17 +62,15 @@ func buildEntryMeta(anim *frames.Animation, name, path string) entryMeta {
 		length += d
 	}
 	m := entryMeta{
-		name:    name,
-		width:   anim.Width,
-		height:  anim.Height,
-		frames:  len(anim.Frames),
-		length:  length,
-		source:  anim.SourceName,
-		filter:  anim.FilterBackground,
-		colored: anim.Colored,
-		complex: anim.Complex,
-		ramp:    anim.CustomRamp,
-		path:    path,
+		name:   name,
+		width:  anim.Width,
+		height: anim.Height,
+		frames: len(anim.Frames),
+		length: length,
+		source: anim.SourceName,
+		filter: anim.FilterBackground,
+		ramp:   anim.CustomRamp,
+		path:   path,
 	}
 	if info, err := os.Stat(path); err == nil {
 		m.fileSize = info.Size()

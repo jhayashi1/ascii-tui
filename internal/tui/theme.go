@@ -118,22 +118,34 @@ func renderColumn(title, content string, width, height int, st styles) string {
 	return b.String()
 }
 
-// headerLine builds the preview column's top row: an accent glyph, the
-// bold entry name, and dim metadata, truncated to fit width. Segments
-// are truncated as plain text before styling so the ANSI width math in
-// fitLine stays exact.
-func headerLine(glyph, name, meta string, width int, st styles) string {
+// brandIcon and brandName form the app wordmark shown right-aligned in
+// the header line; the icon is the luminance ramp the engine draws with.
+const (
+	brandIcon = "░▒▓"
+	brandName = "ramp"
+)
+
+// headerLine builds the preview column's top row: an accent "▸" and the
+// bold entry name on the left, the app wordmark right-aligned. An
+// empty name leaves just the wordmark; the wordmark is dropped first
+// when width runs out. Segments are truncated as plain text before
+// styling so the ANSI width math in fitLine stays exact.
+func headerLine(name string, width int, st styles) string {
 	if width <= 0 {
 		return ""
 	}
-	gw := lipgloss.Width(glyph)
-	name = truncateLabel(name, max(0, width-gw-1))
-	rest := width - gw - 1 - lipgloss.Width(name)
-	metaPart := ""
-	if meta != "" && rest > 4 {
-		metaPart = "  " + truncateLabel(meta, rest-2)
+	left, leftW := "", 0
+	if name != "" {
+		name = truncateLabel(name, max(0, width-2))
+		left = st.accent.Render("▸") + " " + st.headerName.Render(name)
+		leftW = 2 + lipgloss.Width(name)
 	}
-	return st.accent.Render(glyph) + " " + st.headerName.Render(name) + st.dim.Render(metaPart)
+	gap := width - leftW - lipgloss.Width(brandIcon) - 1 - lipgloss.Width(brandName)
+	if gap < 2 {
+		return left
+	}
+	return left + strings.Repeat(" ", gap) +
+		st.accent.Render(brandIcon) + " " + st.headerName.Render(brandName)
 }
 
 // sectionRule renders "LABEL ────" to at most width columns: an
