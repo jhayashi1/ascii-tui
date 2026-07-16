@@ -4,6 +4,7 @@ package tui
 import (
 	"fmt"
 
+	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/jhayashi1/ascii-tui/internal/library"
@@ -32,13 +33,14 @@ type (
 )
 
 type model struct {
-	screen  screen
-	gallery galleryModel
-	render  renderModel
-	player  playerModel
-	st      styles
-	width   int
-	height  int
+	screen      screen
+	gallery     galleryModel
+	render      renderModel
+	player      playerModel
+	st          styles
+	helpVisible bool
+	width       int
+	height      int
 }
 
 // Run starts the interactive TUI over the given library directory.
@@ -58,7 +60,21 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.helpVisible {
+		// Any key closes the overlay and is swallowed; other messages
+		// (ticks, resize, preview loads) still flow through underneath
+		// so nothing freezes while it's open.
+		if _, ok := msg.(tea.KeyMsg); ok {
+			m.helpVisible = false
+			return m, nil
+		}
+	}
+
 	switch msg := msg.(type) {
+	case toggleHelpMsg:
+		m.helpVisible = !m.helpVisible
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		galleryCmd := m.gallery.setSize(msg.Width, msg.Height)
@@ -114,6 +130,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	if m.helpVisible {
+		return renderHelpOverlay(m.width, m.height, m.helpKeyMap(), m.st)
+	}
 	switch m.screen {
 	case screenRendering:
 		return m.render.view()
@@ -122,6 +141,13 @@ func (m model) View() string {
 	default:
 		return m.gallery.view()
 	}
+}
+
+func (m model) helpKeyMap() help.KeyMap {
+	if m.screen == screenPlayer {
+		return m.player.keys
+	}
+	return m.gallery.keys
 }
 
 func (m model) startPlayer(entries []library.Entry, index int) (tea.Model, tea.Cmd) {

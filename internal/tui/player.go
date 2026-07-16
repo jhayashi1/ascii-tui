@@ -336,6 +336,8 @@ func (p playerModel) update(msg tea.Msg) (playerModel, tea.Cmd) {
 			return p, tea.Quit
 		case key.Matches(msg, p.keys.Back):
 			return p, func() tea.Msg { return backToGalleryMsg{} }
+		case key.Matches(msg, p.keys.Help):
+			return p, func() tea.Msg { return toggleHelpMsg{} }
 		case key.Matches(msg, p.keys.Pause):
 			p.paused = !p.paused
 			p.gen++

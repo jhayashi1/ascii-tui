@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -59,5 +60,65 @@ func TestGalleryPreviewLoadsAndFollowsSelection(t *testing.T) {
 	}
 	if got := m.gallery.preview.view(); !strings.Contains(got, "second") {
 		t.Errorf("preview view = %q, want it to mention %q", got, "second")
+	}
+}
+
+func TestGalleryDeleteConfirmYDeletes(t *testing.T) {
+	m := fixtureModel(t)
+	targetPath := m.gallery.entries()[0].Path
+
+	m = step(t, m, keyRune('d'))
+	if m.gallery.mode != inputConfirmDelete {
+		t.Fatalf("mode after d = %v, want inputConfirmDelete", m.gallery.mode)
+	}
+
+	m = step(t, m, keyRune('y'))
+	if m.gallery.mode != inputNone {
+		t.Errorf("mode after y = %v, want inputNone", m.gallery.mode)
+	}
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Errorf("entry file still exists after confirming delete: %v", err)
+	}
+	if got := len(m.gallery.entries()); got != 1 {
+		t.Errorf("entries after delete = %d, want 1", got)
+	}
+}
+
+func TestGalleryDeleteConfirmNKeeps(t *testing.T) {
+	m := fixtureModel(t)
+	targetPath := m.gallery.entries()[0].Path
+
+	m = step(t, m, keyRune('d'))
+	m = step(t, m, keyRune('n'))
+
+	if m.gallery.mode != inputNone {
+		t.Errorf("mode after n = %v, want inputNone", m.gallery.mode)
+	}
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Errorf("entry file removed despite cancelling: %v", err)
+	}
+	if got := len(m.gallery.entries()); got != 2 {
+		t.Errorf("entries after cancelled delete = %d, want 2", got)
+	}
+}
+
+func TestGalleryDeleteConfirmQDoesNotQuit(t *testing.T) {
+	m := fixtureModel(t)
+	targetPath := m.gallery.entries()[0].Path
+	m = step(t, m, keyRune('d'))
+
+	updated, cmd := m.Update(keyRune('q'))
+	m = updated.(model)
+	if cmd != nil {
+		t.Fatal("q during delete confirmation produced a command (want cancel-only, no quit)")
+	}
+	if m.gallery.mode != inputNone {
+		t.Errorf("mode after q = %v, want inputNone (cancelled)", m.gallery.mode)
+	}
+	if m.screen != screenGallery {
+		t.Errorf("screen after q during confirm = %v, want gallery", m.screen)
+	}
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Errorf("entry file removed despite q cancelling: %v", err)
 	}
 }

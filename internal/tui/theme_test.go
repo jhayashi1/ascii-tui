@@ -52,7 +52,7 @@ func TestRenderPanelLongTitleTruncates(t *testing.T) {
 
 func TestRenderFooterWidth(t *testing.T) {
 	st := defaultStyles()
-	footer := renderFooter("enter play · q quit", 40, st)
+	footer := renderFooter("enter play · q quit", 40, st.help, st)
 	if w := lipgloss.Width(footer); w != 40 {
 		t.Errorf("footer width = %d, want 40 (%q)", w, footer)
 	}
@@ -66,7 +66,7 @@ func TestRenderFooterWidth(t *testing.T) {
 
 func TestRenderFooterTruncatesLongContent(t *testing.T) {
 	st := defaultStyles()
-	footer := renderFooter(strings.Repeat("word ", 40), 20, st)
+	footer := renderFooter(strings.Repeat("word ", 40), 20, st.help, st)
 	if w := lipgloss.Width(footer); w != 20 {
 		t.Errorf("footer width = %d, want 20 (%q)", w, footer)
 	}

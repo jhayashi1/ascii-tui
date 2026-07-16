@@ -134,8 +134,9 @@ func (st styles) topBorder(title string, innerW int) string {
 }
 
 // renderFooter draws the bottom help bar "╰ content ────╯" spanning the
-// given width, coloring content with the help (dim) style.
-func renderFooter(content string, width int, st styles) string {
+// given width, coloring content with contentStyle (typically st.help,
+// or st.warning for an attention-grabbing prompt).
+func renderFooter(content string, width int, contentStyle lipgloss.Style, st styles) string {
 	if width < 4 {
 		width = 4
 	}
@@ -149,7 +150,7 @@ func renderFooter(content string, width int, st styles) string {
 		}
 	}
 	return st.border.Render(prefix) +
-		st.help.Render(content) +
+		contentStyle.Render(content) +
 		st.border.Render(" "+strings.Repeat(borderH, fill)+borderBR)
 }
 

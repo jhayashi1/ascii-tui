@@ -58,6 +58,7 @@ const (
 	inputNone inputMode = iota
 	inputAddGIF
 	inputRename
+	inputConfirmDelete
 )
 
 type galleryModel struct {
@@ -68,6 +69,8 @@ type galleryModel struct {
 	preview    previewModel
 	mode       inputMode
 	renamePath string
+	deletePath string
+	deleteName string
 	status     string
 	st         styles
 	keys       galleryKeyMap
@@ -247,13 +250,15 @@ func (g galleryModel) updateInner(msg tea.Msg) (galleryModel, tea.Cmd) {
 			return g, nil
 		case key.Matches(keyMsg, g.keys.Delete):
 			if item, ok := g.list.SelectedItem().(entryItem); ok {
-				if err := os.Remove(item.Path); err != nil {
-					g.status = fmt.Sprintf("delete failed: %v", err)
-				} else if err := g.reload(); err != nil {
-					g.status = err.Error()
-				}
+				g.mode = inputConfirmDelete
+				g.deletePath = item.Path
+				g.deleteName = item.Name
+				g.status = ""
+				g.layout()
 			}
 			return g, nil
+		case key.Matches(keyMsg, g.keys.Help):
+			return g, func() tea.Msg { return toggleHelpMsg{} }
 		}
 	}
 
@@ -263,8 +268,11 @@ func (g galleryModel) updateInner(msg tea.Msg) (galleryModel, tea.Cmd) {
 }
 
 func (g galleryModel) updateTyping(msg tea.Msg) (galleryModel, tea.Cmd) {
-	if g.mode == inputRename {
+	switch g.mode {
+	case inputRename:
 		return g.updateRenaming(msg)
+	case inputConfirmDelete:
+		return g.updateConfirmDelete(msg)
 	}
 
 	if key, ok := msg.(tea.KeyMsg); ok {
@@ -317,6 +325,27 @@ func (g galleryModel) updateRenaming(msg tea.Msg) (galleryModel, tea.Cmd) {
 	return g, cmd
 }
 
+// updateConfirmDelete handles the y/n prompt raised by the delete key:
+// "y" or "enter" deletes; any other key cancels, including "q" (which
+// must not quit while a destructive action is pending confirmation).
+func (g galleryModel) updateConfirmDelete(msg tea.Msg) (galleryModel, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return g, nil
+	}
+	path := g.deletePath
+	g.stopTyping()
+	switch keyMsg.String() {
+	case "y", "enter":
+		if err := os.Remove(path); err != nil {
+			g.status = fmt.Sprintf("delete failed: %v", err)
+		} else if err := g.reload(); err != nil {
+			g.status = err.Error()
+		}
+	}
+	return g, nil
+}
+
 // commitRename renames the selected entry and keeps it selected, since
 // entries are listed by name and the rename can reorder them.
 func (g galleryModel) commitRename(newName string) (galleryModel, tea.Cmd) {
@@ -357,7 +386,7 @@ func (g galleryModel) view() string {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, body, right)
 	}
 
-	return body + "\n" + renderFooter(g.footerText(), g.width, g.st)
+	return body + "\n" + renderFooter(g.footerText(), g.width, g.footerStyle(), g.st)
 }
 
 func (g galleryModel) footerText() string {
@@ -369,7 +398,16 @@ func (g galleryModel) footerText() string {
 		return "enter render · tab complete · up/down select · esc cancel"
 	case inputRename:
 		return "enter rename · esc cancel"
+	case inputConfirmDelete:
+		return fmt.Sprintf("delete %q? [y/n]", g.deleteName)
 	default:
-		return "enter play · a add · r rename · d delete · / filter · q quit"
+		return "enter play · a add · r rename · d delete · / filter · ? help · q quit"
 	}
+}
+
+func (g galleryModel) footerStyle() lipgloss.Style {
+	if g.status == "" && g.mode == inputConfirmDelete {
+		return g.st.warning
+	}
+	return g.st.help
 }
