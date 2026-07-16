@@ -51,17 +51,33 @@ func step(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	updated, cmd := m.Update(msg)
 	m = updated.(model)
+	return runCmd(t, m, cmd)
+}
+
+// runCmd executes cmd and feeds its result back through step, unwrapping
+// tea.Batch the same way the real runtime does: each sub-command runs
+// and its result is dispatched independently, rather than the raw
+// tea.BatchMsg slice ever reaching a model's Update.
+func runCmd(t *testing.T, m model, cmd tea.Cmd) model {
+	t.Helper()
 	if cmd == nil {
 		return m
 	}
-	if produced := cmd(); produced != nil {
-		switch produced.(type) {
-		case frameTickMsg, refitTickMsg, cursor.BlinkMsg:
-			return m
-		}
-		return step(t, m, produced)
+	produced := cmd()
+	if produced == nil {
+		return m
 	}
-	return m
+	if batch, ok := produced.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			m = runCmd(t, m, c)
+		}
+		return m
+	}
+	switch produced.(type) {
+	case frameTickMsg, refitTickMsg, cursor.BlinkMsg:
+		return m
+	}
+	return step(t, m, produced)
 }
 
 func keyRune(r rune) tea.KeyMsg {
@@ -154,7 +170,21 @@ func TestGalleryAddPromptExpandsTilde(t *testing.T) {
 
 	m := step(t, fixtureModel(t), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	m = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("~/nope.gif")})
-	m = step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Chase the Enter keypress's command by hand for exactly one hop
+	// (gallery's startRenderMsg cmd -> the startRenderMsg case, which
+	// expands the path and switches screens synchronously) without
+	// draining further: the render screen's own command actually reads
+	// the gif from disk, and "nope.gif" doesn't exist, which would bounce
+	// back to the gallery before this test gets to make its assertion.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd != nil {
+		if produced := cmd(); produced != nil {
+			updated, _ = m.Update(produced)
+			m = updated.(model)
+		}
+	}
 
 	if m.screen != screenRendering {
 		t.Fatalf("screen after enter = %v, want rendering", m.screen)

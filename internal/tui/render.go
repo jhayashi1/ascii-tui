@@ -45,7 +45,7 @@ func newRender(dir, gifPath string, st styles) renderModel {
 
 func (r *renderModel) setSize(width, height int) {
 	r.width, r.height = width, height
-	r.bar.Width = max(10, min(60, width-8))
+	r.bar.Width = max(10, min(60, width-10))
 }
 
 // start kicks off the render in the background and begins pumping its
@@ -114,5 +114,5 @@ func (r renderModel) view() string {
 	b.WriteString(r.st.prompt.Render(fmt.Sprintf("rendering %s", filepath.Base(r.gifPath))))
 	b.WriteString("\n\n")
 	b.WriteString(r.st.prompt.Render(r.bar.ViewAs(r.percent)))
-	return b.String()
+	return renderPanel("render", b.String(), r.width, r.height, r.st)
 }

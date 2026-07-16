@@ -61,13 +61,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.gallery.setSize(msg.Width, msg.Height)
+		galleryCmd := m.gallery.setSize(msg.Width, msg.Height)
 		m.render.setSize(msg.Width, msg.Height)
 		m.player.setSize(msg.Width, msg.Height)
 		if m.screen == screenPlayer {
 			return m, m.player.scheduleRefit()
 		}
-		return m, nil
+		return m, galleryCmd
 
 	case startRenderMsg:
 		m.screen = screenRendering
