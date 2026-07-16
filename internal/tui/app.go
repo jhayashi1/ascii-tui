@@ -4,8 +4,10 @@ package tui
 import (
 	"fmt"
 
+	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/jhayashi1/ascii-tui/internal/config"
 	"github.com/jhayashi1/ascii-tui/internal/library"
 )
 
@@ -32,21 +34,32 @@ type (
 )
 
 type model struct {
-	screen  screen
-	gallery galleryModel
-	render  renderModel
-	player  playerModel
-	width   int
-	height  int
+	screen      screen
+	gallery     galleryModel
+	render      renderModel
+	player      playerModel
+	st          styles
+	cfg         config.Config
+	helpVisible bool
+	width       int
+	height      int
 }
 
-// Run starts the interactive TUI over the given library directory.
-func Run(libraryDir string) error {
-	gallery, err := newGallery(libraryDir)
+// Run starts the interactive TUI over the given library directory,
+// using cfg for the theme and playback/render defaults.
+func Run(libraryDir string, cfg config.Config) error {
+	st := newStyles(theme{
+		Accent: cfg.Theme.Accent,
+		Border: cfg.Theme.Border,
+		Text:   cfg.Theme.Text,
+		Dim:    cfg.Theme.Dim,
+		Error:  cfg.Theme.Error,
+	})
+	gallery, err := newGallery(libraryDir, st)
 	if err != nil {
 		return err
 	}
-	m := model{gallery: gallery}
+	m := model{gallery: gallery, st: st, cfg: cfg}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
@@ -56,20 +69,34 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.helpVisible {
+		// Any key closes the overlay and is swallowed; other messages
+		// (ticks, resize, preview loads) still flow through underneath
+		// so nothing freezes while it's open.
+		if _, ok := msg.(tea.KeyMsg); ok {
+			m.helpVisible = false
+			return m, nil
+		}
+	}
+
 	switch msg := msg.(type) {
+	case toggleHelpMsg:
+		m.helpVisible = !m.helpVisible
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.gallery.setSize(msg.Width, msg.Height)
+		galleryCmd := m.gallery.setSize(msg.Width, msg.Height)
 		m.render.setSize(msg.Width, msg.Height)
 		m.player.setSize(msg.Width, msg.Height)
 		if m.screen == screenPlayer {
 			return m, m.player.scheduleRefit()
 		}
-		return m, nil
+		return m, galleryCmd
 
 	case startRenderMsg:
 		m.screen = screenRendering
-		m.render = newRender(m.gallery.dir, msg.gifPath)
+		m.render = newRender(m.gallery.dir, msg.gifPath, m.st, m.cfg.Render.FilterBackground, m.cfg.Render.Complex)
 		m.render.setSize(m.width, m.height)
 		return m, m.render.start()
 
@@ -96,7 +123,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.gallery.reload(); err != nil {
 			m.gallery.status = err.Error()
 		}
-		return m, nil
+		return m, m.gallery.reconcilePreview()
 	}
 
 	var cmd tea.Cmd
@@ -112,6 +139,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	if m.helpVisible {
+		return renderHelpOverlay(m.width, m.height, m.helpKeyMap(), m.st)
+	}
 	switch m.screen {
 	case screenRendering:
 		return m.render.view()
@@ -122,8 +152,15 @@ func (m model) View() string {
 	}
 }
 
+func (m model) helpKeyMap() help.KeyMap {
+	if m.screen == screenPlayer {
+		return m.player.keys
+	}
+	return m.gallery.keys
+}
+
 func (m model) startPlayer(entries []library.Entry, index int) (tea.Model, tea.Cmd) {
-	player, cmd := newPlayer(entries, index)
+	player, cmd := newPlayer(entries, index, m.st, m.cfg.Playback.Speed)
 	player.setSize(m.width, m.height)
 	m.player = player
 	m.screen = screenPlayer

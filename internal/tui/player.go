@@ -3,9 +3,13 @@ package tui
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -17,6 +21,17 @@ import (
 // refitDebounce is how long the player waits after a resize before
 // re-rendering, so resize storms trigger a single render.
 const refitDebounce = 250 * time.Millisecond
+
+// Speed is adjusted in x1.25 steps and clamped to this range.
+const (
+	minSpeed  = 0.25
+	maxSpeed  = 8.0
+	speedStep = 1.25
+)
+
+// minTickDelay floors the scaled frame delay so a high speed multiplier
+// can't schedule an effectively-immediate, CPU-spinning tick loop.
+const minTickDelay = 10 * time.Millisecond
 
 type frameTickMsg struct{ gen int }
 
@@ -37,7 +52,15 @@ type playerModel struct {
 	frame   int
 	gen     int
 	paused  bool
+	speed   float64
+	// elapsed[i] is the source-time position at which frame i starts;
+	// a prefix sum over anim.Delays, rebuilt whenever anim is loaded.
+	elapsed []time.Duration
 	err     error
+	st      styles
+	keys    playerKeyMap
+	bar     progress.Model
+	help    help.Model
 	width   int
 	height  int
 	// refitGen invalidates pending debounce timers and in-flight
@@ -46,8 +69,19 @@ type playerModel struct {
 	refitting bool
 }
 
-func newPlayer(entries []library.Entry, index int) (playerModel, tea.Cmd) {
-	p := playerModel{entries: entries, index: index}
+func newPlayer(entries []library.Entry, index int, st styles, speed float64) (playerModel, tea.Cmd) {
+	if speed <= 0 {
+		speed = 1
+	}
+	p := playerModel{
+		entries: entries,
+		index:   index,
+		speed:   clampSpeed(speed),
+		st:      st,
+		keys:    newPlayerKeyMap(),
+		bar:     progress.New(progress.WithSolidFill(st.theme.Accent)),
+		help:    help.New(),
+	}
 	p.load()
 	return p, p.tickCmd()
 }
@@ -67,16 +101,98 @@ func (p *playerModel) load() {
 		return
 	}
 	p.anim = anim
+	p.buildElapsed()
+}
+
+// buildElapsed recomputes the prefix-sum start times used by seekBy and
+// the HUD's elapsed/total display.
+func (p *playerModel) buildElapsed() {
+	p.elapsed = make([]time.Duration, len(p.anim.Delays))
+	var sum time.Duration
+	for i, d := range p.anim.Delays {
+		p.elapsed[i] = sum
+		sum += d
+	}
+}
+
+// totalDuration is the full source-time loop length.
+func (p playerModel) totalDuration() time.Duration {
+	if p.anim == nil || len(p.anim.Delays) == 0 {
+		return 0
+	}
+	return p.elapsed[len(p.elapsed)-1] + p.anim.Delays[len(p.anim.Delays)-1]
+}
+
+// frameAt returns the index of the frame showing at source-time t.
+func (p playerModel) frameAt(t time.Duration) int {
+	for i := len(p.elapsed) - 1; i >= 0; i-- {
+		if t >= p.elapsed[i] {
+			return i
+		}
+	}
+	return 0
+}
+
+// seekBy moves playback by d (negative seeks backward), wrapping around
+// the loop. It leaves the paused state untouched: seeking while paused
+// stays paused, seeking while playing keeps playing from the new frame.
+func (p *playerModel) seekBy(d time.Duration) {
+	total := p.totalDuration()
+	if total <= 0 {
+		return
+	}
+	target := (p.elapsed[p.frame] + d) % total
+	if target < 0 {
+		target += total
+	}
+	p.frame = p.frameAt(target)
+	p.gen++
+}
+
+// stepFrame moves by delta frames and pauses, since single-stepping
+// while still auto-advancing would be confusing.
+func (p *playerModel) stepFrame(delta int) {
+	if p.anim == nil {
+		return
+	}
+	n := len(p.anim.Frames)
+	if n == 0 {
+		return
+	}
+	p.frame = ((p.frame+delta)%n + n) % n
+	p.paused = true
+	p.gen++
+}
+
+// adjustSpeed scales the current speed by factor, clamps it, and bumps
+// gen so the caller's follow-up tickCmd reschedules at the new rate
+// immediately rather than waiting out the current frame's old delay.
+func (p *playerModel) adjustSpeed(factor float64) {
+	p.speed = clampSpeed(p.speed * factor)
+	p.gen++
+}
+
+func clampSpeed(s float64) float64 {
+	switch {
+	case s < minSpeed:
+		return minSpeed
+	case s > maxSpeed:
+		return maxSpeed
+	default:
+		return s
+	}
 }
 
 func (p *playerModel) setSize(width, height int) {
 	p.width, p.height = width, height
+	p.bar.Width = max(1, width)
+	p.help.Width = width
 }
 
 // viewport returns the area available for the animation, reserving one
-// row for the status line.
+// row for the progress bar and one for the status line.
 func (p playerModel) viewport() (w, h int) {
-	return p.width, p.height - 1
+	return p.width, p.height - 2
 }
 
 // needsRefit reports whether the animation should be re-rendered for
@@ -111,14 +227,27 @@ func (p *playerModel) scheduleRefit() tea.Cmd {
 }
 
 // refitCmd re-renders the animation from its embedded GIF to fit the
-// current viewport, using the options it was originally rendered with.
+// current viewport, using the options it was originally rendered with,
+// and saves the result back to the library so an entry whose stored
+// size no longer matches the viewport (e.g. after a terminal resize, or
+// a change to how much space the UI reserves) only needs to refit once
+// rather than on every future play.
 func (p playerModel) refitCmd() tea.Cmd {
 	gen := p.refitGen
 	anim := p.anim
+	path := p.entries[p.index].Path
 	opts := p.renderOptions()
 	return func() tea.Msg {
 		re, err := engine.Render(bytes.NewReader(anim.SourceGIF), opts, nil)
-		return refitDoneMsg{gen: gen, anim: re, err: err}
+		if err != nil {
+			return refitDoneMsg{gen: gen, err: err}
+		}
+		re.SourceGIF = anim.SourceGIF
+		re.SourceName = anim.SourceName
+		if err := library.Write(path, re); err != nil {
+			return refitDoneMsg{gen: gen, err: err}
+		}
+		return refitDoneMsg{gen: gen, anim: re}
 	}
 }
 
@@ -163,9 +292,23 @@ func (p playerModel) tickCmd() tea.Cmd {
 		return nil
 	}
 	gen := p.gen
-	return tea.Tick(p.anim.Delays[p.frame], func(time.Time) tea.Msg {
+	delay := scaleDelay(p.anim.Delays[p.frame], p.speed)
+	return tea.Tick(delay, func(time.Time) tea.Msg {
 		return frameTickMsg{gen: gen}
 	})
+}
+
+// scaleDelay applies the playback speed to a frame delay, flooring the
+// result so a high multiplier can't spin the tick loop.
+func scaleDelay(d time.Duration, speed float64) time.Duration {
+	if speed <= 0 {
+		speed = 1
+	}
+	scaled := time.Duration(float64(d) / speed)
+	if scaled < minTickDelay {
+		return minTickDelay
+	}
+	return scaled
 }
 
 func (p playerModel) update(msg tea.Msg) (playerModel, tea.Cmd) {
@@ -204,20 +347,40 @@ func (p playerModel) update(msg tea.Msg) (playerModel, tea.Cmd) {
 		return p, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
+		switch {
+		case key.Matches(msg, p.keys.Quit):
 			return p, tea.Quit
-		case "esc":
+		case key.Matches(msg, p.keys.Back):
 			return p, func() tea.Msg { return backToGalleryMsg{} }
-		case " ":
+		case key.Matches(msg, p.keys.Help):
+			return p, func() tea.Msg { return toggleHelpMsg{} }
+		case key.Matches(msg, p.keys.Pause):
 			p.paused = !p.paused
 			p.gen++
 			return p, p.tickCmd()
-		case "left", "h":
+		case key.Matches(msg, p.keys.SeekBack):
+			p.seekBy(-time.Second)
+			return p, p.tickCmd()
+		case key.Matches(msg, p.keys.SeekForward):
+			p.seekBy(time.Second)
+			return p, p.tickCmd()
+		case key.Matches(msg, p.keys.StepBack):
+			p.stepFrame(-1)
+			return p, nil
+		case key.Matches(msg, p.keys.StepForward):
+			p.stepFrame(1)
+			return p, nil
+		case key.Matches(msg, p.keys.SpeedUp):
+			p.adjustSpeed(speedStep)
+			return p, p.tickCmd()
+		case key.Matches(msg, p.keys.SpeedDown):
+			p.adjustSpeed(1 / speedStep)
+			return p, p.tickCmd()
+		case key.Matches(msg, p.keys.Prev):
 			return p.switchTo(p.index - 1)
-		case "right", "l":
+		case key.Matches(msg, p.keys.Next):
 			return p.switchTo(p.index + 1)
-		case "f":
+		case key.Matches(msg, p.keys.Filter):
 			if p.anim == nil || p.anim.SourceGIF == nil {
 				return p, nil
 			}
@@ -241,8 +404,8 @@ func (p playerModel) switchTo(index int) (playerModel, tea.Cmd) {
 
 func (p playerModel) view() string {
 	if p.err != nil {
-		return statusStyle.Render(fmt.Sprintf("error: %v", p.err)) + "\n" +
-			helpStyle.Render("[esc] back  [q] quit")
+		return p.st.status.Render(fmt.Sprintf("error: %v", p.err)) + "\n" +
+			p.st.help.Render("[esc] back  [q] quit")
 	}
 	if p.anim == nil {
 		return ""
@@ -255,29 +418,68 @@ func (p playerModel) view() string {
 		if p.anim.SourceGIF != nil {
 			return lipgloss.Place(vw, max(0, vh), lipgloss.Center, lipgloss.Center,
 				fmt.Sprintf("fitting to %dx%d...", vw, vh)) + "\n" +
-				helpStyle.Render("[esc] back  [q] quit")
+				p.st.help.Render("[esc] back  [q] quit")
 		}
-		return promptStyle.Render(fmt.Sprintf(
+		return p.st.prompt.Render(fmt.Sprintf(
 			"animation is %dx%d but the terminal is %dx%d;\nenlarge the window or re-render with a smaller --width",
 			p.anim.Width, p.anim.Height, vw, vh)) + "\n" +
-			helpStyle.Render("[esc] back  [q] quit")
+			p.st.help.Render("[esc] back  [q] quit")
 	}
-
-	name := p.entries[p.index].Name
-	state := ""
-	if p.paused {
-		state = "  paused"
-	}
-	if p.refitting {
-		state += "  fitting..."
-	}
-	status := fmt.Sprintf("%s  %d/%d%s  [space] pause  [<-/->] switch  [f] filter bg  [esc] back  [q] quit",
-		name, p.frame+1, len(p.anim.Frames), state)
 
 	var b strings.Builder
 	b.WriteString(lipgloss.Place(vw, max(0, vh), lipgloss.Center, lipgloss.Center,
 		p.anim.Frames[p.frame]))
 	b.WriteByte('\n')
-	b.WriteString(helpStyle.Render(status))
+	b.WriteString(p.progressRow())
+	b.WriteByte('\n')
+	b.WriteString(p.statusLine())
 	return b.String()
+}
+
+func (p playerModel) progressRow() string {
+	total := p.totalDuration()
+	var frac float64
+	if total > 0 {
+		frac = float64(p.elapsed[p.frame]) / float64(total)
+	}
+	return p.bar.ViewAs(frac)
+}
+
+// statusLine renders "name · frame/total · elapsed/total · speed ·
+// state" on the left and the key hints on the right, giving the left
+// side priority: the help view's own width-aware truncation is what
+// drops key hints first as the terminal narrows.
+func (p playerModel) statusLine() string {
+	left := fmt.Sprintf("%s  %d/%d  %s/%s",
+		p.entries[p.index].Name, p.frame+1, len(p.anim.Frames),
+		formatDuration(p.elapsed[p.frame]), formatDuration(p.totalDuration()))
+	if p.speed != 1 {
+		left += "  " + formatSpeed(p.speed)
+	}
+	if p.paused {
+		left += "  paused"
+	}
+	if p.refitting {
+		left += "  fitting..."
+	}
+
+	h := p.help
+	h.Width = max(0, p.width-lipgloss.Width(left)-2)
+	right := h.ShortHelpView(p.keys.ShortHelp())
+
+	gap := max(1, p.width-lipgloss.Width(left)-lipgloss.Width(right))
+	return p.st.help.Render(fitLine(left+strings.Repeat(" ", gap)+right, p.width))
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	m := int(d / time.Minute)
+	s := int(d%time.Minute) / int(time.Second)
+	return fmt.Sprintf("%02d:%02d", m, s)
+}
+
+func formatSpeed(speed float64) string {
+	s := strconv.FormatFloat(speed, 'f', 2, 64)
+	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	return s + "x"
 }

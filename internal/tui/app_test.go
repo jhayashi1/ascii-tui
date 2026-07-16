@@ -34,7 +34,7 @@ func fixtureModel(t *testing.T) model {
 		}
 	}
 
-	gallery, err := newGallery(dir)
+	gallery, err := newGallery(dir, defaultStyles())
 	if err != nil {
 		t.Fatalf("newGallery: %v", err)
 	}
@@ -51,17 +51,33 @@ func step(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	updated, cmd := m.Update(msg)
 	m = updated.(model)
+	return runCmd(t, m, cmd)
+}
+
+// runCmd executes cmd and feeds its result back through step, unwrapping
+// tea.Batch the same way the real runtime does: each sub-command runs
+// and its result is dispatched independently, rather than the raw
+// tea.BatchMsg slice ever reaching a model's Update.
+func runCmd(t *testing.T, m model, cmd tea.Cmd) model {
+	t.Helper()
 	if cmd == nil {
 		return m
 	}
-	if produced := cmd(); produced != nil {
-		switch produced.(type) {
-		case frameTickMsg, refitTickMsg, cursor.BlinkMsg:
-			return m
-		}
-		return step(t, m, produced)
+	produced := cmd()
+	if produced == nil {
+		return m
 	}
-	return m
+	if batch, ok := produced.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			m = runCmd(t, m, c)
+		}
+		return m
+	}
+	switch produced.(type) {
+	case frameTickMsg, refitTickMsg, cursor.BlinkMsg:
+		return m
+	}
+	return step(t, m, produced)
 }
 
 func keyRune(r rune) tea.KeyMsg {
@@ -90,12 +106,12 @@ func TestPlayerNavigationAndBack(t *testing.T) {
 		t.Fatalf("initial entry = %q, want first", got)
 	}
 
-	m = step(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	m = step(t, m, keyRune('n'))
 	if got := m.player.entries[m.player.index].Name; got != "second" {
-		t.Errorf("entry after right = %q, want second", got)
+		t.Errorf("entry after n = %q, want second", got)
 	}
 
-	m = step(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	m = step(t, m, keyRune('n'))
 	if got := m.player.entries[m.player.index].Name; got != "first" {
 		t.Errorf("entry after wraparound = %q, want first", got)
 	}
@@ -154,7 +170,21 @@ func TestGalleryAddPromptExpandsTilde(t *testing.T) {
 
 	m := step(t, fixtureModel(t), tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	m = step(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("~/nope.gif")})
-	m = step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Chase the Enter keypress's command by hand for exactly one hop
+	// (gallery's startRenderMsg cmd -> the startRenderMsg case, which
+	// expands the path and switches screens synchronously) without
+	// draining further: the render screen's own command actually reads
+	// the gif from disk, and "nope.gif" doesn't exist, which would bounce
+	// back to the gallery before this test gets to make its assertion.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd != nil {
+		if produced := cmd(); produced != nil {
+			updated, _ = m.Update(produced)
+			m = updated.(model)
+		}
+	}
 
 	if m.screen != screenRendering {
 		t.Fatalf("screen after enter = %v, want rendering", m.screen)
@@ -269,7 +299,7 @@ func fixtureModelResizable(t *testing.T) model {
 		t.Fatalf("saving fixture: %v", err)
 	}
 
-	gallery, err := newGallery(dir)
+	gallery, err := newGallery(dir, defaultStyles())
 	if err != nil {
 		t.Fatalf("newGallery: %v", err)
 	}
@@ -301,7 +331,7 @@ func TestPlayerRefitsOnResize(t *testing.T) {
 	if m.player.refitting {
 		t.Error("player still refitting after render completed")
 	}
-	vw, vh := 40, 11
+	vw, vh := 40, 10
 	w, h := m.player.anim.Width, m.player.anim.Height
 	if w > vw || h > vh {
 		t.Errorf("refitted to %dx%d, exceeds viewport %dx%d", w, h, vw, vh)
@@ -314,6 +344,36 @@ func TestPlayerRefitsOnResize(t *testing.T) {
 	}
 	if m.player.needsRefit() {
 		t.Error("player still wants a refit at the size it just fitted")
+	}
+}
+
+// TestPlayerRefitPersistsToLibrary guards against a regression where a
+// resize-triggered refit only updated the in-memory animation: every
+// future play of the same entry would refit again from the stale
+// on-disk size, showing "fitting to..." every single time instead of
+// just once.
+func TestPlayerRefitPersistsToLibrary(t *testing.T) {
+	m := step(t, fixtureModelResizable(t), tea.KeyMsg{Type: tea.KeyEnter})
+	path := m.player.entries[m.player.index].Path
+
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+	m = updated.(model)
+
+	player, cmd := m.player.update(refitTickMsg{gen: m.player.refitGen})
+	m.player = player
+	if cmd == nil {
+		t.Fatal("debounce tick produced no render command")
+	}
+	player, _ = m.player.update(cmd())
+	m.player = player
+
+	saved, err := library.Load(path)
+	if err != nil {
+		t.Fatalf("loading saved entry: %v", err)
+	}
+	if saved.Width != m.player.anim.Width || saved.Height != m.player.anim.Height {
+		t.Errorf("saved dims = %dx%d, want %dx%d (refit not persisted to disk)",
+			saved.Width, saved.Height, m.player.anim.Width, m.player.anim.Height)
 	}
 }
 
@@ -378,7 +438,7 @@ func TestPlayerToggleFilterBackground(t *testing.T) {
 		t.Fatalf("saving fixture: %v", err)
 	}
 
-	gallery, err := newGallery(dir)
+	gallery, err := newGallery(dir, defaultStyles())
 	if err != nil {
 		t.Fatalf("newGallery: %v", err)
 	}

@@ -23,27 +23,33 @@ type renderEventMsg struct {
 }
 
 type renderModel struct {
-	dir     string
-	gifPath string
-	bar     progress.Model
-	events  chan renderEventMsg
-	percent float64
-	width   int
-	height  int
+	dir              string
+	gifPath          string
+	bar              progress.Model
+	events           chan renderEventMsg
+	percent          float64
+	st               styles
+	filterBackground bool
+	complex          bool
+	width            int
+	height           int
 }
 
-func newRender(dir, gifPath string) renderModel {
+func newRender(dir, gifPath string, st styles, filterBackground, useComplex bool) renderModel {
 	return renderModel{
-		dir:     dir,
-		gifPath: gifPath,
-		bar:     progress.New(progress.WithDefaultGradient()),
-		events:  make(chan renderEventMsg, 16),
+		dir:              dir,
+		gifPath:          gifPath,
+		bar:              progress.New(progress.WithSolidFill(st.theme.Accent)),
+		events:           make(chan renderEventMsg, 16),
+		st:               st,
+		filterBackground: filterBackground,
+		complex:          useComplex,
 	}
 }
 
 func (r *renderModel) setSize(width, height int) {
 	r.width, r.height = width, height
-	r.bar.Width = max(10, min(60, width-8))
+	r.bar.Width = max(10, min(60, width-10))
 }
 
 // start kicks off the render in the background and begins pumping its
@@ -60,12 +66,14 @@ func (r renderModel) runRender() tea.Cmd {
 			return nil
 		}
 
-		// Size the render to the TUI's own viewport (minus the status
-		// line) so the player's fit check always agrees.
+		// Size the render to the TUI's own viewport (minus the progress
+		// bar and status rows) so the player's fit check always agrees.
 		opts := engine.Options{
-			Colored:   true,
-			MaxWidth:  r.width,
-			MaxHeight: max(1, r.height-1),
+			Colored:          true,
+			FilterBackground: r.filterBackground,
+			Complex:          r.complex,
+			MaxWidth:         r.width,
+			MaxHeight:        max(1, r.height-2),
 		}
 		anim, err := engine.Render(bytes.NewReader(data), opts, func(done, total int) {
 			select {
@@ -109,8 +117,8 @@ func (r renderModel) update(msg tea.Msg) (renderModel, tea.Cmd) {
 func (r renderModel) view() string {
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(promptStyle.Render(fmt.Sprintf("rendering %s", filepath.Base(r.gifPath))))
+	b.WriteString(r.st.prompt.Render(fmt.Sprintf("rendering %s", filepath.Base(r.gifPath))))
 	b.WriteString("\n\n")
-	b.WriteString(promptStyle.Render(r.bar.ViewAs(r.percent)))
-	return b.String()
+	b.WriteString(r.st.prompt.Render(r.bar.ViewAs(r.percent)))
+	return renderPanel("render", b.String(), r.width, r.height, r.st)
 }
