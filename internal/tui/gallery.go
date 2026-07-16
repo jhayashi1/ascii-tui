@@ -8,15 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jhayashi1/ascii-tui/internal/library"
-)
-
-var (
-	helpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 2)
-	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Padding(0, 2)
-	promptStyle = lipgloss.NewStyle().Padding(0, 2)
 )
 
 type entryItem struct{ library.Entry }
@@ -43,11 +36,12 @@ type galleryModel struct {
 	mode       inputMode
 	renamePath string
 	status     string
+	st         styles
 	width      int
 	height     int
 }
 
-func newGallery(dir string) (galleryModel, error) {
+func newGallery(dir string, st styles) (galleryModel, error) {
 	delegate := list.NewDefaultDelegate()
 	l := list.New(nil, delegate, 0, 0)
 	l.Title = "ascii-tui library"
@@ -55,7 +49,7 @@ func newGallery(dir string) (galleryModel, error) {
 	l.SetStatusBarItemName("animation", "animations")
 	l.DisableQuitKeybindings()
 
-	g := galleryModel{dir: dir, list: l, picker: newPathInput(), input: textinput.New()}
+	g := galleryModel{dir: dir, list: l, picker: newPathInput(st), input: textinput.New(), st: st}
 	if err := g.reload(); err != nil {
 		return g, err
 	}
@@ -240,16 +234,16 @@ func (g galleryModel) view() string {
 	switch g.mode {
 	case inputAddGIF:
 		b.WriteString(g.picker.view())
-		b.WriteString(helpStyle.Render("[enter] render  [tab] complete  [↑/↓] select  [esc] cancel"))
+		b.WriteString(g.st.help.Render("[enter] render  [tab] complete  [↑/↓] select  [esc] cancel"))
 		return b.String()
 	case inputRename:
-		b.WriteString(promptStyle.Render("rename to: "+g.input.View()) + "\n")
-		b.WriteString(helpStyle.Render("[enter] rename  [esc] cancel"))
+		b.WriteString(g.st.prompt.Render("rename to: "+g.input.View()) + "\n")
+		b.WriteString(g.st.help.Render("[enter] rename  [esc] cancel"))
 		return b.String()
 	}
 	if g.status != "" {
-		b.WriteString(statusStyle.Render(g.status) + "\n")
+		b.WriteString(g.st.status.Render(g.status) + "\n")
 	}
-	b.WriteString(helpStyle.Render("[enter] play  [a] add gif  [r] rename  [d] delete  [/] filter  [q] quit"))
+	b.WriteString(g.st.help.Render("[enter] play  [a] add gif  [r] rename  [d] delete  [/] filter  [q] quit"))
 	return b.String()
 }

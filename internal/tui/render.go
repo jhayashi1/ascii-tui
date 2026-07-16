@@ -28,16 +28,18 @@ type renderModel struct {
 	bar     progress.Model
 	events  chan renderEventMsg
 	percent float64
+	st      styles
 	width   int
 	height  int
 }
 
-func newRender(dir, gifPath string) renderModel {
+func newRender(dir, gifPath string, st styles) renderModel {
 	return renderModel{
 		dir:     dir,
 		gifPath: gifPath,
-		bar:     progress.New(progress.WithDefaultGradient()),
+		bar:     progress.New(progress.WithSolidFill(st.theme.Accent)),
 		events:  make(chan renderEventMsg, 16),
+		st:      st,
 	}
 }
 
@@ -109,8 +111,8 @@ func (r renderModel) update(msg tea.Msg) (renderModel, tea.Cmd) {
 func (r renderModel) view() string {
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(promptStyle.Render(fmt.Sprintf("rendering %s", filepath.Base(r.gifPath))))
+	b.WriteString(r.st.prompt.Render(fmt.Sprintf("rendering %s", filepath.Base(r.gifPath))))
 	b.WriteString("\n\n")
-	b.WriteString(promptStyle.Render(r.bar.ViewAs(r.percent)))
+	b.WriteString(r.st.prompt.Render(r.bar.ViewAs(r.percent)))
 	return b.String()
 }

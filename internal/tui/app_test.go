@@ -34,7 +34,7 @@ func fixtureModel(t *testing.T) model {
 		}
 	}
 
-	gallery, err := newGallery(dir)
+	gallery, err := newGallery(dir, defaultStyles())
 	if err != nil {
 		t.Fatalf("newGallery: %v", err)
 	}
@@ -269,7 +269,7 @@ func fixtureModelResizable(t *testing.T) model {
 		t.Fatalf("saving fixture: %v", err)
 	}
 
-	gallery, err := newGallery(dir)
+	gallery, err := newGallery(dir, defaultStyles())
 	if err != nil {
 		t.Fatalf("newGallery: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestPlayerToggleFilterBackground(t *testing.T) {
 		t.Fatalf("saving fixture: %v", err)
 	}
 
-	gallery, err := newGallery(dir)
+	gallery, err := newGallery(dir, defaultStyles())
 	if err != nil {
 		t.Fatalf("newGallery: %v", err)
 	}

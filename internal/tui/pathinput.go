@@ -9,7 +9,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/sahilm/fuzzy"
 
 	"github.com/jhayashi1/ascii-tui/internal/pathutil"
@@ -25,13 +24,6 @@ const (
 	maxWalkVisits  = 20000
 )
 
-var (
-	suggestionFileStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	suggestionMatchStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-	suggestionMarkerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	suggestionEmptyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-)
-
 type pathSuggestion struct {
 	// name is the gif's path relative to the typed directory portion.
 	name string
@@ -45,6 +37,7 @@ type pathSuggestion struct {
 // the last separator. A leading "~" expands to the home directory.
 type pathInput struct {
 	input textinput.Model
+	st    styles
 	// dirPrefix is the typed text up to and including the last path
 	// separator; completions are appended to it.
 	dirPrefix   string
@@ -58,10 +51,10 @@ type pathInput struct {
 	walkNames  []string
 }
 
-func newPathInput() pathInput {
+func newPathInput(st styles) pathInput {
 	input := textinput.New()
 	input.Placeholder = "path/to/animation.gif"
-	return pathInput{input: input}
+	return pathInput{input: input, st: st}
 }
 
 func (p *pathInput) focus() tea.Cmd {
@@ -217,7 +210,7 @@ func (p *pathInput) accept() (path string, ok bool) {
 // padding with blanks so the overall height never changes.
 func (p pathInput) view() string {
 	var b strings.Builder
-	b.WriteString(promptStyle.Render("render gif: " + p.input.View()))
+	b.WriteString(p.st.prompt.Render("render gif: " + p.input.View()))
 	b.WriteByte('\n')
 	end := min(p.offset+maxVisibleSuggestions, len(p.suggestions))
 	for i := p.offset; i < end; i++ {
@@ -225,7 +218,7 @@ func (p pathInput) view() string {
 		b.WriteByte('\n')
 	}
 	if len(p.suggestions) == 0 && strings.TrimSpace(p.input.Value()) != "" {
-		b.WriteString(suggestionEmptyStyle.Render("    no matching gifs"))
+		b.WriteString(p.st.dim.Render("    no matching gifs"))
 		b.WriteByte('\n')
 		end++
 	}
@@ -239,18 +232,20 @@ func (p pathInput) suggestionRow(i int) string {
 	s := p.suggestions[i]
 	marker := "    "
 	if i == p.sel {
-		marker = "  " + suggestionMarkerStyle.Render("▸ ")
+		marker = "  " + p.st.accent.Render("▸ ")
 	}
 	name := truncateRunes(s.name, max(4, p.input.Width-4))
-	return marker + renderMatched(name, s.matches, suggestionFileStyle)
+	return marker + p.renderMatched(name, s.matches)
 }
 
 // renderMatched styles name rune by rune so the fuzzy-matched positions
 // stand out, avoiding nested-style resets from wrapping the whole row.
-func renderMatched(name string, matches []int, base lipgloss.Style) string {
+func (p pathInput) renderMatched(name string, matches []int) string {
+	base := p.st.text
 	if len(matches) == 0 {
 		return base.Render(name)
 	}
+	match := p.st.accent.Bold(true)
 	matched := make(map[int]bool, len(matches))
 	for _, m := range matches {
 		matched[m] = true
@@ -258,7 +253,7 @@ func renderMatched(name string, matches []int, base lipgloss.Style) string {
 	var b strings.Builder
 	for i, r := range name {
 		if matched[i] {
-			b.WriteString(suggestionMatchStyle.Render(string(r)))
+			b.WriteString(match.Render(string(r)))
 		} else {
 			b.WriteString(base.Render(string(r)))
 		}

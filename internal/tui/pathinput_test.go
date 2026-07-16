@@ -37,7 +37,7 @@ func setPickerValue(p *pathInput, value string) {
 
 func TestPathInputListsGifsRecursively(t *testing.T) {
 	dir := fixtureGifDir(t)
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, dir+string(os.PathSeparator))
 
 	want := []string{"cat.GIF", "party.gif", filepath.Join("clips", "nested.gif")}
@@ -54,7 +54,7 @@ func TestPathInputListsGifsRecursively(t *testing.T) {
 
 func TestPathInputFuzzyFilters(t *testing.T) {
 	dir := fixtureGifDir(t)
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, filepath.Join(dir, "pty"))
 
 	got := suggestionNames(p)
@@ -68,7 +68,7 @@ func TestPathInputFuzzyFilters(t *testing.T) {
 
 func TestPathInputFuzzyMatchesNestedGifs(t *testing.T) {
 	dir := fixtureGifDir(t)
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, filepath.Join(dir, "nested"))
 
 	got := suggestionNames(p)
@@ -79,7 +79,7 @@ func TestPathInputFuzzyMatchesNestedGifs(t *testing.T) {
 
 func TestPathInputShowsHiddenWhenAskedFor(t *testing.T) {
 	dir := fixtureGifDir(t)
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, filepath.Join(dir, ".h"))
 
 	got := suggestionNames(p)
@@ -90,7 +90,7 @@ func TestPathInputShowsHiddenWhenAskedFor(t *testing.T) {
 
 func TestPathInputCompleteFillsNestedPath(t *testing.T) {
 	dir := fixtureGifDir(t)
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, filepath.Join(dir, "cl"))
 
 	p.complete()
@@ -102,7 +102,7 @@ func TestPathInputCompleteFillsNestedPath(t *testing.T) {
 
 func TestPathInputAcceptGif(t *testing.T) {
 	dir := fixtureGifDir(t)
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, filepath.Join(dir, "party"))
 
 	path, ok := p.accept()
@@ -119,7 +119,7 @@ func TestPathInputTildeCompletion(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, "~")
 
 	got := suggestionNames(p)
@@ -139,7 +139,7 @@ func TestPathInputAcceptExpandsTypedTilde(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, "~/party.gif")
 
 	path, ok := p.accept()
@@ -153,7 +153,7 @@ func TestPathInputAcceptExpandsTypedTilde(t *testing.T) {
 
 func TestPathInputSelectionWraps(t *testing.T) {
 	dir := fixtureGifDir(t)
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, dir+string(os.PathSeparator))
 
 	p.moveSelection(-1)
@@ -179,7 +179,7 @@ func TestPathInputDepthCap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := newPathInput()
+	p := newPathInput(defaultStyles())
 	setPickerValue(&p, dir+string(os.PathSeparator))
 	if got := suggestionNames(p); len(got) != 0 {
 		t.Errorf("gif beyond depth cap suggested: %v", got)

@@ -38,6 +38,7 @@ type playerModel struct {
 	gen     int
 	paused  bool
 	err     error
+	st      styles
 	width   int
 	height  int
 	// refitGen invalidates pending debounce timers and in-flight
@@ -46,8 +47,8 @@ type playerModel struct {
 	refitting bool
 }
 
-func newPlayer(entries []library.Entry, index int) (playerModel, tea.Cmd) {
-	p := playerModel{entries: entries, index: index}
+func newPlayer(entries []library.Entry, index int, st styles) (playerModel, tea.Cmd) {
+	p := playerModel{entries: entries, index: index, st: st}
 	p.load()
 	return p, p.tickCmd()
 }
@@ -241,8 +242,8 @@ func (p playerModel) switchTo(index int) (playerModel, tea.Cmd) {
 
 func (p playerModel) view() string {
 	if p.err != nil {
-		return statusStyle.Render(fmt.Sprintf("error: %v", p.err)) + "\n" +
-			helpStyle.Render("[esc] back  [q] quit")
+		return p.st.status.Render(fmt.Sprintf("error: %v", p.err)) + "\n" +
+			p.st.help.Render("[esc] back  [q] quit")
 	}
 	if p.anim == nil {
 		return ""
@@ -255,12 +256,12 @@ func (p playerModel) view() string {
 		if p.anim.SourceGIF != nil {
 			return lipgloss.Place(vw, max(0, vh), lipgloss.Center, lipgloss.Center,
 				fmt.Sprintf("fitting to %dx%d...", vw, vh)) + "\n" +
-				helpStyle.Render("[esc] back  [q] quit")
+				p.st.help.Render("[esc] back  [q] quit")
 		}
-		return promptStyle.Render(fmt.Sprintf(
+		return p.st.prompt.Render(fmt.Sprintf(
 			"animation is %dx%d but the terminal is %dx%d;\nenlarge the window or re-render with a smaller --width",
 			p.anim.Width, p.anim.Height, vw, vh)) + "\n" +
-			helpStyle.Render("[esc] back  [q] quit")
+			p.st.help.Render("[esc] back  [q] quit")
 	}
 
 	name := p.entries[p.index].Name
@@ -278,6 +279,6 @@ func (p playerModel) view() string {
 	b.WriteString(lipgloss.Place(vw, max(0, vh), lipgloss.Center, lipgloss.Center,
 		p.anim.Frames[p.frame]))
 	b.WriteByte('\n')
-	b.WriteString(helpStyle.Render(status))
+	b.WriteString(p.st.help.Render(status))
 	return b.String()
 }

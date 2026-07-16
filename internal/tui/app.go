@@ -36,17 +36,19 @@ type model struct {
 	gallery galleryModel
 	render  renderModel
 	player  playerModel
+	st      styles
 	width   int
 	height  int
 }
 
 // Run starts the interactive TUI over the given library directory.
 func Run(libraryDir string) error {
-	gallery, err := newGallery(libraryDir)
+	st := defaultStyles()
+	gallery, err := newGallery(libraryDir, st)
 	if err != nil {
 		return err
 	}
-	m := model{gallery: gallery}
+	m := model{gallery: gallery, st: st}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
@@ -69,7 +71,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case startRenderMsg:
 		m.screen = screenRendering
-		m.render = newRender(m.gallery.dir, msg.gifPath)
+		m.render = newRender(m.gallery.dir, msg.gifPath, m.st)
 		m.render.setSize(m.width, m.height)
 		return m, m.render.start()
 
@@ -123,7 +125,7 @@ func (m model) View() string {
 }
 
 func (m model) startPlayer(entries []library.Entry, index int) (tea.Model, tea.Cmd) {
-	player, cmd := newPlayer(entries, index)
+	player, cmd := newPlayer(entries, index, m.st)
 	player.setSize(m.width, m.height)
 	m.player = player
 	m.screen = screenPlayer
