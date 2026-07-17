@@ -54,7 +54,7 @@ either screen for a full key reference; any key closes it.
 | `enter` | play the selected animation |
 | `a` | render a new gif into the library |
 | `r` | rename the selected entry |
-| `d` | delete, with a `y`/`n` confirmation |
+| `d` | delete, via a centered confirmation menu (↑/↓ select, enter confirm, esc cancel) |
 | `/` | filter the list |
 | `t` | cycle the color theme (saved to the config file) |
 | `k` | configure player keybinds |

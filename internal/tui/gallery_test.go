@@ -117,7 +117,9 @@ func TestGalleryPreviewReloadsAfterReturningFromPlayer(t *testing.T) {
 	}
 }
 
-func TestGalleryDeleteConfirmYDeletes(t *testing.T) {
+// TestGalleryDeleteMenuSelectDeletes opens the centered menu, arrows down
+// to the Delete option, and confirms with enter.
+func TestGalleryDeleteMenuSelectDeletes(t *testing.T) {
 	m := fixtureModel(t)
 	targetPath := m.gallery.entries()[0].Path
 
@@ -125,10 +127,18 @@ func TestGalleryDeleteConfirmYDeletes(t *testing.T) {
 	if m.gallery.mode != inputConfirmDelete {
 		t.Fatalf("mode after d = %v, want inputConfirmDelete", m.gallery.mode)
 	}
+	if m.gallery.deleteCursor != 0 {
+		t.Fatalf("cursor after opening menu = %d, want 0 (cancel highlighted first)", m.gallery.deleteCursor)
+	}
 
-	m = step(t, m, keyRune('y'))
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	if got := deleteConfirmOptions[m.gallery.deleteCursor]; got != "delete" {
+		t.Fatalf("highlighted option after down = %q, want %q", got, "delete")
+	}
+
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if m.gallery.mode != inputNone {
-		t.Errorf("mode after y = %v, want inputNone", m.gallery.mode)
+		t.Errorf("mode after confirming = %v, want inputNone", m.gallery.mode)
 	}
 	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
 		t.Errorf("entry file still exists after confirming delete: %v", err)
@@ -138,15 +148,36 @@ func TestGalleryDeleteConfirmYDeletes(t *testing.T) {
 	}
 }
 
-func TestGalleryDeleteConfirmNKeeps(t *testing.T) {
+// TestGalleryDeleteLastKeepsSelection guards against the cursor dangling
+// past the end after the last entry is deleted, which left no row
+// selected: the list keeps its old index across a reload.
+func TestGalleryDeleteLastKeepsSelection(t *testing.T) {
+	m := fixtureModel(t)
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyDown}) // select the last entry
+
+	m = step(t, m, keyRune('d'))
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyDown}) // highlight "delete"
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	if got := len(m.gallery.entries()); got != 1 {
+		t.Fatalf("entries after delete = %d, want 1", got)
+	}
+	if _, ok := m.gallery.selectedEntry(); !ok {
+		t.Errorf("no entry selected after deleting the last one; cursor index = %d", m.gallery.list.Index())
+	}
+}
+
+// TestGalleryDeleteMenuEnterOnCancelKeeps confirms that enter on the
+// default Cancel highlight closes the menu without deleting.
+func TestGalleryDeleteMenuEnterOnCancelKeeps(t *testing.T) {
 	m := fixtureModel(t)
 	targetPath := m.gallery.entries()[0].Path
 
 	m = step(t, m, keyRune('d'))
-	m = step(t, m, keyRune('n'))
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 
 	if m.gallery.mode != inputNone {
-		t.Errorf("mode after n = %v, want inputNone", m.gallery.mode)
+		t.Errorf("mode after enter on cancel = %v, want inputNone", m.gallery.mode)
 	}
 	if _, err := os.Stat(targetPath); err != nil {
 		t.Errorf("entry file removed despite cancelling: %v", err)
@@ -156,7 +187,27 @@ func TestGalleryDeleteConfirmNKeeps(t *testing.T) {
 	}
 }
 
-func TestGalleryDeleteConfirmQDoesNotQuit(t *testing.T) {
+// TestGalleryDeleteMenuEscCancels closes the menu with esc, leaving the
+// entry untouched.
+func TestGalleryDeleteMenuEscCancels(t *testing.T) {
+	m := fixtureModel(t)
+	targetPath := m.gallery.entries()[0].Path
+
+	m = step(t, m, keyRune('d'))
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+
+	if m.gallery.mode != inputNone {
+		t.Errorf("mode after esc = %v, want inputNone", m.gallery.mode)
+	}
+	if _, err := os.Stat(targetPath); err != nil {
+		t.Errorf("entry file removed despite esc cancelling: %v", err)
+	}
+}
+
+// TestGalleryDeleteMenuQDoesNotQuit guards that a stray "q" while the
+// destructive menu is up neither quits the app nor deletes; it is
+// swallowed and the menu stays open.
+func TestGalleryDeleteMenuQDoesNotQuit(t *testing.T) {
 	m := fixtureModel(t)
 	targetPath := m.gallery.entries()[0].Path
 	m = step(t, m, keyRune('d'))
@@ -164,15 +215,15 @@ func TestGalleryDeleteConfirmQDoesNotQuit(t *testing.T) {
 	updated, cmd := m.Update(keyRune('q'))
 	m = updated.(model)
 	if cmd != nil {
-		t.Fatal("q during delete confirmation produced a command (want cancel-only, no quit)")
+		t.Fatal("q during delete confirmation produced a command (want swallowed, no quit)")
 	}
-	if m.gallery.mode != inputNone {
-		t.Errorf("mode after q = %v, want inputNone (cancelled)", m.gallery.mode)
+	if m.gallery.mode != inputConfirmDelete {
+		t.Errorf("mode after q = %v, want inputConfirmDelete (menu still open)", m.gallery.mode)
 	}
 	if m.screen != screenGallery {
 		t.Errorf("screen after q during confirm = %v, want gallery", m.screen)
 	}
 	if _, err := os.Stat(targetPath); err != nil {
-		t.Errorf("entry file removed despite q cancelling: %v", err)
+		t.Errorf("entry file removed despite q being swallowed: %v", err)
 	}
 }
