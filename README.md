@@ -67,7 +67,7 @@ either screen for a full key reference; any key closes it.
 | `space` | pause / resume |
 | `left`/`h`, `right`/`l` | scrub one frame back/forward (pauses); hold to accelerate |
 | `,` / `.` | step one frame back/forward (pauses) |
-| `+`/`=`, `-` | speed up / down (x1.25 steps, 0.25x-8x) |
+| `+`/`=`, `-` | speed up / down (0.25 steps, 0.25x-8x) |
 | `n` / `p` | next / previous animation |
 | `f` | toggle background filtering (re-rendered and saved) |
 | `?` | show all key bindings |

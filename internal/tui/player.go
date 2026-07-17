@@ -22,11 +22,11 @@ import (
 // re-rendering, so resize storms trigger a single render.
 const refitDebounce = 250 * time.Millisecond
 
-// Speed is adjusted in x1.25 steps and clamped to this range.
+// Speed is adjusted in 0.25 increments and clamped to this range.
 const (
 	minSpeed  = 0.25
 	maxSpeed  = 8.0
-	speedStep = 1.25
+	speedStep = 0.25
 )
 
 // minTickDelay floors the scaled frame delay so a high speed multiplier
@@ -178,11 +178,11 @@ func (p *playerModel) stepFrame(delta int) {
 	p.gen++
 }
 
-// adjustSpeed scales the current speed by factor, clamps it, and bumps
+// adjustSpeed adds delta to the current speed, clamps it, and bumps
 // gen so the caller's follow-up tickCmd reschedules at the new rate
 // immediately rather than waiting out the current frame's old delay.
-func (p *playerModel) adjustSpeed(factor float64) {
-	p.speed = clampSpeed(p.speed * factor)
+func (p *playerModel) adjustSpeed(delta float64) {
+	p.speed = clampSpeed(p.speed + delta)
 	p.gen++
 }
 
@@ -387,7 +387,7 @@ func (p playerModel) update(msg tea.Msg) (playerModel, tea.Cmd) {
 			p.adjustSpeed(speedStep)
 			return p, p.tickCmd()
 		case key.Matches(msg, p.keys.SpeedDown):
-			p.adjustSpeed(1 / speedStep)
+			p.adjustSpeed(-speedStep)
 			return p, p.tickCmd()
 		case key.Matches(msg, p.keys.Prev):
 			return p.switchTo(p.index - 1)
