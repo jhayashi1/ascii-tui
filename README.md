@@ -59,7 +59,7 @@ either screen for a full key reference; any key closes it.
 | `t` | cycle the color theme (saved to the config file) |
 | `k` | configure player keybinds |
 | `?` | show all key bindings |
-| `q` / `ctrl+c` | quit |
+| `ctrl+c` | quit |
 
 **Player** (defaults; rebindable via the gallery's `k` menu)
 
@@ -73,7 +73,7 @@ either screen for a full key reference; any key closes it.
 | `f` | toggle background filtering (re-rendered and saved) |
 | `?` | show all key bindings |
 | `esc` | back to the gallery |
-| `q` / `ctrl+c` | quit |
+| `ctrl+c` | quit |
 
 **Keybinds menu** (`k` from the gallery)
 
@@ -81,7 +81,7 @@ Every playback action above can be rebound. `↑`/`↓` (or `k`/`j`) select an
 action, `enter` rebinds it to the next key you press, `a` adds an extra key
 alongside the existing ones, `d` resets the action to its default, and `D`
 resets everything. Changes are saved to the config file immediately.
-`esc`, `q`, `ctrl+c`, and `?` are reserved (they navigate the player itself)
+`esc`, `ctrl+c`, and `?` are reserved (they navigate the player itself)
 and a key already used by another action is rejected, so bindings can never
 collide or lock you out.
 

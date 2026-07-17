@@ -27,7 +27,6 @@ type (
 // so rebinding them could lock the user out.
 var reservedKeys = map[string]string{
 	"esc":    "back",
-	"q":      "quit",
 	"ctrl+c": "quit",
 	"?":      "help",
 }
@@ -78,7 +77,7 @@ func newKeybindsKeyMap() keybindsKeyMap {
 		Default: key.NewBinding(key.WithKeys("D"), key.WithHelp("D", "reset all")),
 		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Quit:    key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 	}
 }
 

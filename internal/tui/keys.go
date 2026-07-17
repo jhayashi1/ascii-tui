@@ -39,7 +39,7 @@ func newGalleryKeyMap() galleryKeyMap {
 		Theme:    key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "theme")),
 		Keybinds: key.NewBinding(key.WithKeys("k"), key.WithHelp("k", "keybinds")),
 		Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Quit:     key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 	}
 }
 
@@ -90,7 +90,7 @@ func newPlayerKeyMap(keys config.Keys) playerKeyMap {
 		Filter:      configBinding(keys.Filter, def.Filter, "filter bg"),
 		Help:        key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Back:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Quit:        key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 	}
 }
 

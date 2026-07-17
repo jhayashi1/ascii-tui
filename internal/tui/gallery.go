@@ -559,9 +559,9 @@ func (g galleryModel) statusBar() string {
 		middle = "type to filter · enter apply · esc cancel"
 	case g.list.FilterState() == list.FilterApplied:
 		chipLabel = "FILTER"
-		middle = "enter play · esc clear · a add · r rename · d delete · t theme · k keybinds · ? help · q quit"
+		middle = "enter play · esc clear · a add · r rename · d delete · t theme · k keybinds · ? help · ctrl+c quit"
 	default:
-		middle = "enter play · a add · r rename · d delete · / filter · t theme · k keybinds · ? help · q quit"
+		middle = "enter play · a add · r rename · d delete · / filter · t theme · k keybinds · ? help · ctrl+c quit"
 	}
 	if g.status != "" {
 		middle, middleStyle = g.status, g.st.status

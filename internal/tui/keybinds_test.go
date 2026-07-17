@@ -76,9 +76,9 @@ func TestKeybindsAddKeyKeepsExisting(t *testing.T) {
 func TestKeybindsRejectsReservedKey(t *testing.T) {
 	m := fixtureKeybinds(t)
 	m = step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	m = step(t, m, keyRune('q'))
+	m = step(t, m, keyRune('?'))
 	if m.screen != screenKeybinds {
-		t.Fatal("q during capture quit or left the screen")
+		t.Fatal("'?' during capture opened help or left the screen")
 	}
 	if !strings.Contains(m.keybinds.status, "reserved") {
 		t.Errorf("status = %q, want reserved-key rejection", m.keybinds.status)
