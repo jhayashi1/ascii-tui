@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -13,6 +14,21 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jhayashi1/ascii-tui/internal/library"
+)
+
+// statusTimeout is how long a transient footer message (a theme switch,
+// a rename/delete result, a keybind warning) stays up before the footer
+// reverts to its normal key hints. It is a var only so tests can shorten
+// it; nothing mutates it at runtime.
+var statusTimeout = 3 * time.Second
+
+// clearGalleryStatusMsg and clearKeybindsStatusMsg clear their screen's
+// footer message after statusTimeout. gen is the value of that model's
+// statusGen when the timer was armed, so a newer message (which bumps
+// statusGen) is never wiped by an older timer.
+type (
+	clearGalleryStatusMsg  struct{ gen int }
+	clearKeybindsStatusMsg struct{ gen int }
 )
 
 // minPreviewWidth and minPreviewHeight gate the preview column; below
@@ -82,6 +98,7 @@ type galleryModel struct {
 	deletePath string
 	deleteName string
 	status     string
+	statusGen  int
 	st         styles
 	keys       galleryKeyMap
 	width      int
@@ -195,6 +212,30 @@ func (g *galleryModel) layout() bool {
 	return g.preview.setSize(max(0, midW), max(0, bodyH-2))
 }
 
+// setStyles swaps in a new theme's styles across the gallery's
+// long-lived sub-components (the list delegate, path picker, and
+// preview) so a runtime theme change takes effect without rebuilding the
+// screen. Other screens are constructed on demand from the app's styles,
+// so they pick up the new theme on their next open.
+func (g *galleryModel) setStyles(st styles) {
+	g.st = st
+	g.list.SetDelegate(barDelegate{st: st})
+	g.picker.st = st
+	g.preview.st = st
+}
+
+// flashStatus shows a transient footer message and returns a command
+// that clears it after statusTimeout, reverting the footer to its normal
+// hints. statusGen guards against an older timer wiping a newer message.
+func (g *galleryModel) flashStatus(msg string) tea.Cmd {
+	g.status = msg
+	g.statusGen++
+	gen := g.statusGen
+	return tea.Tick(statusTimeout, func(time.Time) tea.Msg {
+		return clearGalleryStatusMsg{gen: gen}
+	})
+}
+
 func (g *galleryModel) stopTyping() {
 	g.mode = inputNone
 	g.picker.blur()
@@ -276,6 +317,8 @@ func (g galleryModel) updateInner(msg tea.Msg) (galleryModel, tea.Cmd) {
 				g.layout()
 			}
 			return g, nil
+		case key.Matches(keyMsg, g.keys.Theme):
+			return g, func() tea.Msg { return cycleThemeMsg{} }
 		case key.Matches(keyMsg, g.keys.Keybinds):
 			return g, func() tea.Msg { return openKeybindsMsg{} }
 		case key.Matches(keyMsg, g.keys.Help):
@@ -372,12 +415,10 @@ func (g galleryModel) updateConfirmDelete(msg tea.Msg) (galleryModel, tea.Cmd) {
 func (g galleryModel) commitRename(newName string) (galleryModel, tea.Cmd) {
 	newPath, err := library.Rename(g.renamePath, newName)
 	if err != nil {
-		g.status = fmt.Sprintf("rename failed: %v", err)
-		return g, nil
+		return g, (&g).flashStatus(fmt.Sprintf("rename failed: %v", err))
 	}
 	if err := g.reload(); err != nil {
-		g.status = err.Error()
-		return g, nil
+		return g, (&g).flashStatus(err.Error())
 	}
 	for i, item := range g.list.Items() {
 		if item.(entryItem).Path == newPath {
@@ -458,9 +499,9 @@ func (g galleryModel) statusBar() string {
 		middle = "type to filter · enter apply · esc cancel"
 	case g.list.FilterState() == list.FilterApplied:
 		chipLabel = "FILTER"
-		middle = "enter play · esc clear · a add · r rename · d delete · k keybinds · ? help · q quit"
+		middle = "enter play · esc clear · a add · r rename · d delete · t theme · k keybinds · ? help · q quit"
 	default:
-		middle = "enter play · a add · r rename · d delete · / filter · k keybinds · ? help · q quit"
+		middle = "enter play · a add · r rename · d delete · / filter · t theme · k keybinds · ? help · q quit"
 	}
 	if g.status != "" {
 		middle, middleStyle = g.status, g.st.status

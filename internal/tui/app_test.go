@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +18,13 @@ import (
 	"github.com/jhayashi1/ascii-tui/internal/frames"
 	"github.com/jhayashi1/ascii-tui/internal/library"
 )
+
+// TestMain shortens the footer-status timeout so the synchronous test
+// harness doesn't block on the real 3-second clear timers.
+func TestMain(m *testing.M) {
+	statusTimeout = 10 * time.Millisecond
+	os.Exit(m.Run())
+}
 
 func fixtureModel(t *testing.T) model {
 	t.Helper()
@@ -74,7 +82,10 @@ func runCmd(t *testing.T, m model, cmd tea.Cmd) model {
 		return m
 	}
 	switch produced.(type) {
-	case frameTickMsg, refitTickMsg, cursor.BlinkMsg:
+	case frameTickMsg, refitTickMsg, cursor.BlinkMsg, clearGalleryStatusMsg, clearKeybindsStatusMsg:
+		// Self-scheduling or delayed timers: following them would either
+		// loop forever or (for the status timers) clear the very footer
+		// message a test just set out to observe.
 		return m
 	}
 	return step(t, m, produced)
@@ -106,12 +117,12 @@ func TestPlayerNavigationAndBack(t *testing.T) {
 		t.Fatalf("initial entry = %q, want first", got)
 	}
 
-	m = step(t, m, keyRune('n'))
+	m = step(t, m, keyRune('>'))
 	if got := m.player.entries[m.player.index].Name; got != "second" {
-		t.Errorf("entry after n = %q, want second", got)
+		t.Errorf("entry after > = %q, want second", got)
 	}
 
-	m = step(t, m, keyRune('n'))
+	m = step(t, m, keyRune('>'))
 	if got := m.player.entries[m.player.index].Name; got != "first" {
 		t.Errorf("entry after wraparound = %q, want first", got)
 	}

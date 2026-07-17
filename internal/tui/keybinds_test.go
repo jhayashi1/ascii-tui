@@ -41,8 +41,8 @@ func TestKeybindsRebindUpdatesConfigAndPlayer(t *testing.T) {
 	if got := saved.Keys.Pause; len(got) != 1 || got[0] != "x" {
 		t.Errorf("saved pause keys = %v, want [x]", got)
 	}
-	if got := saved.Keys.Next; len(got) != 1 || got[0] != "n" {
-		t.Errorf("saved next keys = %v, want default [n]", got)
+	if got := saved.Keys.Next; len(got) != 1 || got[0] != ">" {
+		t.Errorf("saved next keys = %v, want default [>]", got)
 	}
 
 	// A player launched after the rebind pauses on x, not space.
@@ -94,7 +94,7 @@ func TestKeybindsRejectsReservedKey(t *testing.T) {
 func TestKeybindsRejectsTakenKey(t *testing.T) {
 	m := fixtureKeybinds(t)
 	m = step(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	m = step(t, m, keyRune('n')) // taken by "next"
+	m = step(t, m, keyRune('>')) // taken by "next"
 	if !strings.Contains(m.keybinds.status, "taken by next") {
 		t.Errorf("status = %q, want conflict with next", m.keybinds.status)
 	}
@@ -139,7 +139,7 @@ func TestKeybindsResetSelectedRestoresDefault(t *testing.T) {
 func TestKeybindsViewListsActionsAndKeys(t *testing.T) {
 	m := fixtureKeybinds(t)
 	view := m.View()
-	for _, want := range []string{"PLAYER KEYBINDS", "pause", "space", "scrub back", "←/h", "KEYBINDS"} {
+	for _, want := range []string{"PLAYER KEYBINDS", "pause", "space", "scrub back", "←", "KEYBINDS"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q", want)
 		}

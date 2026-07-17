@@ -44,7 +44,7 @@ either screen for a full key reference; any key closes it.
 
 > [!NOTE]
 > If you're used to the old `left`/`right` switching between animations:
-> that's now `n`/`p`. `left`/`h` and `right`/`l` scrub frame-by-frame within
+> that's now `>`/`<`. `left`/`right` scrub frame-by-frame within
 > the current animation instead, accelerating the longer you hold them.
 
 **Gallery**
@@ -56,6 +56,7 @@ either screen for a full key reference; any key closes it.
 | `r` | rename the selected entry |
 | `d` | delete, with a `y`/`n` confirmation |
 | `/` | filter the list |
+| `t` | cycle the color theme (saved to the config file) |
 | `k` | configure player keybinds |
 | `?` | show all key bindings |
 | `q` / `ctrl+c` | quit |
@@ -65,10 +66,10 @@ either screen for a full key reference; any key closes it.
 | Key | Action |
 |---|---|
 | `space` | pause / resume |
-| `left`/`h`, `right`/`l` | scrub one frame back/forward (pauses); hold to accelerate |
+| `left` / `right` | scrub one frame back/forward (pauses); hold to accelerate |
 | `,` / `.` | step one frame back/forward (pauses) |
 | `+`/`=`, `-` | speed up / down (0.25 steps, 0.25x-8x) |
-| `n` / `p` | next / previous animation |
+| `>` / `<` | next / previous animation |
 | `f` | toggle background filtering (re-rendered and saved) |
 | `?` | show all key bindings |
 | `esc` | back to the gallery |
@@ -126,6 +127,8 @@ filter_background = false   # drop a detected solid background by default
 complex = false              # use a denser character ramp by default
 
 [theme]
+name         = "pink" # built-in preset the gallery's `t` key cycles from
+                      # (pink, matrix, amber, ocean); omit for custom colors
 accent       = "212"  # selection, header glyph, progress bar
 accent_alt   = "179"  # section headers (ANIMATIONS, FILE)
 border       = "240"  # section rules
@@ -138,14 +141,14 @@ chip_text    = "234"  # text inside the mode chip
 
 [keys]                # player bindings; each action takes a list of keys
 pause        = ["space"]
-seek_back    = ["left", "h"]
-seek_forward = ["right", "l"]
+seek_back    = ["left"]
+seek_forward = ["right"]
 step_back    = [","]
 step_forward = ["."]
 speed_up     = ["+", "="]
 speed_down   = ["-"]
-next         = ["n"]
-prev         = ["p"]
+next         = [">"]
+prev         = ["<"]
 filter       = ["f"]
 ```
 
