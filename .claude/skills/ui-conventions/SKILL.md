@@ -13,7 +13,7 @@ Decisions distilled from the project's PR/commit history. Each was made delibera
 
 ## Layout ("tuxedo" style)
 
-- **Borderless three-column gallery**: library list, preview (with a one-line header: `▸ name` left, wordmark right), detail column (dimensions, length, render options, file size, modified). Bordered panels and hand-drawn border primitives were removed in the tuxedo overhaul — do not add rounded-border panels back.
+- **Three-column gallery with line separators, no boxes**: library list, preview (with a one-line header: `▸ name` left, wordmark right), detail column (dimensions, length, render options, file size, modified). Columns are separated by a full-height `│` rule in each gutter (`columnRule`), and a full-width `─` rule (`horizontalRule`) sits between the body and the status bar, both in the theme border color. Rounded/boxed panels were removed in the tuxedo overhaul — separators are single lines only; do not add bordered panels back.
 - Selection is shown as a **full-width background bar** on the list row, not a marker-only highlight.
 - The whole screen is painted with the theme background; when embedding frame art, **re-inject the bg SGR code after any embedded reset** so the fill survives.
 - Header/detail stay minimal: metadata lives in the detail column, not the header; file paths render in normal text with a dim `path` label (not all-dim).
