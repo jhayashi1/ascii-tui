@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -140,6 +142,34 @@ func TestKeybindsViewListsActionsAndKeys(t *testing.T) {
 	for _, want := range []string{"PLAYER KEYBINDS", "pause", "space", "scrub back", "←/h", "KEYBINDS"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q", want)
+		}
+	}
+}
+
+// lipgloss.Place centers each line on its own, so rows only left-align
+// as a block when every row shares the same width; a row rendered at
+// its natural width drifts toward the middle.
+func TestKeybindsViewRowsAlign(t *testing.T) {
+	m := fixtureKeybinds(t)
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	ansiRe := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	lines := strings.Split(ansiRe.ReplaceAllString(mm.(model).View(), ""), "\n")
+	want := -1
+	for _, action := range keybindActions {
+		col := -1
+		for _, line := range lines {
+			if i := strings.Index(line, action.label); i >= 0 {
+				col = utf8.RuneCountInString(line[:i])
+				break
+			}
+		}
+		if col < 0 {
+			t.Fatalf("view missing action %q", action.label)
+		}
+		if want == -1 {
+			want = col
+		} else if col != want {
+			t.Errorf("%q starts at column %d, want %d", action.label, col, want)
 		}
 	}
 }
