@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -13,6 +14,21 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jhayashi1/ascii-tui/internal/library"
+)
+
+// statusTimeout is how long a transient footer message (a theme switch,
+// a rename/delete result, a keybind warning) stays up before the footer
+// reverts to its normal key hints. It is a var only so tests can shorten
+// it; nothing mutates it at runtime.
+var statusTimeout = 3 * time.Second
+
+// clearGalleryStatusMsg and clearKeybindsStatusMsg clear their screen's
+// footer message after statusTimeout. gen is the value of that model's
+// statusGen when the timer was armed, so a newer message (which bumps
+// statusGen) is never wiped by an older timer.
+type (
+	clearGalleryStatusMsg  struct{ gen int }
+	clearKeybindsStatusMsg struct{ gen int }
 )
 
 // minPreviewWidth and minPreviewHeight gate the preview column; below
@@ -72,20 +88,22 @@ const (
 )
 
 type galleryModel struct {
-	dir        string
-	list       list.Model
-	picker     pathInput
-	input      textinput.Model
-	preview    previewModel
-	mode       inputMode
-	renamePath string
-	deletePath string
-	deleteName string
-	status     string
-	st         styles
-	keys       galleryKeyMap
-	width      int
-	height     int
+	dir          string
+	list         list.Model
+	picker       pathInput
+	input        textinput.Model
+	preview      previewModel
+	mode         inputMode
+	renamePath   string
+	deletePath   string
+	deleteName   string
+	deleteCursor int
+	status       string
+	statusGen    int
+	st           styles
+	keys         galleryKeyMap
+	width        int
+	height       int
 }
 
 func newGallery(dir string, st styles) (galleryModel, error) {
@@ -195,6 +213,30 @@ func (g *galleryModel) layout() bool {
 	return g.preview.setSize(max(0, midW), max(0, bodyH-2))
 }
 
+// setStyles swaps in a new theme's styles across the gallery's
+// long-lived sub-components (the list delegate, path picker, and
+// preview) so a runtime theme change takes effect without rebuilding the
+// screen. Other screens are constructed on demand from the app's styles,
+// so they pick up the new theme on their next open.
+func (g *galleryModel) setStyles(st styles) {
+	g.st = st
+	g.list.SetDelegate(barDelegate{st: st})
+	g.picker.st = st
+	g.preview.st = st
+}
+
+// flashStatus shows a transient footer message and returns a command
+// that clears it after statusTimeout, reverting the footer to its normal
+// hints. statusGen guards against an older timer wiping a newer message.
+func (g *galleryModel) flashStatus(msg string) tea.Cmd {
+	g.status = msg
+	g.statusGen++
+	gen := g.statusGen
+	return tea.Tick(statusTimeout, func(time.Time) tea.Msg {
+		return clearGalleryStatusMsg{gen: gen}
+	})
+}
+
 func (g *galleryModel) stopTyping() {
 	g.mode = inputNone
 	g.picker.blur()
@@ -272,10 +314,13 @@ func (g galleryModel) updateInner(msg tea.Msg) (galleryModel, tea.Cmd) {
 				g.mode = inputConfirmDelete
 				g.deletePath = item.Path
 				g.deleteName = item.Name
+				g.deleteCursor = 0
 				g.status = ""
 				g.layout()
 			}
 			return g, nil
+		case key.Matches(keyMsg, g.keys.Theme):
+			return g, func() tea.Msg { return cycleThemeMsg{} }
 		case key.Matches(keyMsg, g.keys.Keybinds):
 			return g, func() tea.Msg { return openKeybindsMsg{} }
 		case key.Matches(keyMsg, g.keys.Help):
@@ -346,22 +391,46 @@ func (g galleryModel) updateRenaming(msg tea.Msg) (galleryModel, tea.Cmd) {
 	return g, cmd
 }
 
-// updateConfirmDelete handles the y/n prompt raised by the delete key:
-// "y" or "enter" deletes; any other key cancels, including "q" (which
-// must not quit while a destructive action is pending confirmation).
+// deleteConfirmOptions are the choices in the centered delete menu, in
+// cursor order. Cancel is first so it is the default highlight and a
+// stray enter never deletes.
+var deleteConfirmOptions = []string{"cancel", "delete"}
+
+// updateConfirmDelete drives the centered delete menu: arrow keys (or
+// j/k, tab) move between Cancel and Delete, enter commits the highlighted
+// choice, and esc cancels. Every other key — notably "q" — is swallowed
+// so a destructive action is never triggered nor the app quit by accident
+// while the confirmation is up.
 func (g galleryModel) updateConfirmDelete(msg tea.Msg) (galleryModel, tea.Cmd) {
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return g, nil
 	}
-	path := g.deletePath
-	g.stopTyping()
 	switch keyMsg.String() {
-	case "y", "enter":
+	case "up", "k", "left", "h", "shift+tab":
+		g.deleteCursor = (g.deleteCursor - 1 + len(deleteConfirmOptions)) % len(deleteConfirmOptions)
+	case "down", "j", "right", "l", "tab":
+		g.deleteCursor = (g.deleteCursor + 1) % len(deleteConfirmOptions)
+	case "esc":
+		g.stopTyping()
+	case "enter":
+		confirmed := deleteConfirmOptions[g.deleteCursor] == "delete"
+		path := g.deletePath
+		g.stopTyping()
+		if !confirmed {
+			return g, nil
+		}
 		if err := os.Remove(path); err != nil {
-			g.status = fmt.Sprintf("delete failed: %v", err)
-		} else if err := g.reload(); err != nil {
-			g.status = err.Error()
+			return g, (&g).flashStatus(fmt.Sprintf("delete failed: %v", err))
+		}
+		if err := g.reload(); err != nil {
+			return g, (&g).flashStatus(err.Error())
+		}
+		// reload keeps the old cursor index, which now dangles past the end
+		// when the deleted entry was the last one; clamp it so a row stays
+		// selected (the entry that shifted up into the freed slot).
+		if n := len(g.list.Items()); n > 0 && g.list.Index() >= n {
+			g.list.Select(n - 1)
 		}
 	}
 	return g, nil
@@ -372,12 +441,10 @@ func (g galleryModel) updateConfirmDelete(msg tea.Msg) (galleryModel, tea.Cmd) {
 func (g galleryModel) commitRename(newName string) (galleryModel, tea.Cmd) {
 	newPath, err := library.Rename(g.renamePath, newName)
 	if err != nil {
-		g.status = fmt.Sprintf("rename failed: %v", err)
-		return g, nil
+		return g, (&g).flashStatus(fmt.Sprintf("rename failed: %v", err))
 	}
 	if err := g.reload(); err != nil {
-		g.status = err.Error()
-		return g, nil
+		return g, (&g).flashStatus(err.Error())
 	}
 	for i, item := range g.list.Items() {
 		if item.(entryItem).Path == newPath {
@@ -388,7 +455,15 @@ func (g galleryModel) commitRename(newName string) (galleryModel, tea.Cmd) {
 	return g, nil
 }
 
+// deleteMenuWidth fits the delete question and both option rows
+// comfortably; long entry names are truncated to it.
+const deleteMenuWidth = 40
+
 func (g galleryModel) view() string {
+	if g.mode == inputConfirmDelete {
+		return g.deleteMenuView()
+	}
+
 	leftW, midW, rightW, bodyH, showPreview, showDetail := g.columnDims()
 
 	var left string
@@ -413,6 +488,32 @@ func (g galleryModel) view() string {
 	}
 
 	return body + "\n" + g.statusBar()
+}
+
+// deleteMenuView centers the confirmation panel over the body, keeping
+// the shared status bar on the bottom row.
+func (g galleryModel) deleteMenuView() string {
+	bodyH := max(1, g.height-1)
+	panel := lipgloss.Place(max(1, g.width), bodyH, lipgloss.Center, lipgloss.Center, g.deleteMenuPanel())
+	return panel + "\n" + g.statusBar()
+}
+
+// deleteMenuPanel builds the centered menu: a warning-styled question
+// above the Cancel/Delete rows, the highlighted row barred like the list
+// selection. Rows share one width so lipgloss.Place keeps them
+// left-aligned as a block rather than centering each on its own.
+func (g galleryModel) deleteMenuPanel() string {
+	panelW := min(deleteMenuWidth, max(1, g.width))
+	question := g.st.warning.Render(truncateLabel(fmt.Sprintf("delete %q?", g.deleteName), panelW))
+	rows := []string{fitLine(question, panelW), ""}
+	for i, opt := range deleteConfirmOptions {
+		if i == g.deleteCursor {
+			rows = append(rows, g.st.selBarText.Render(fitLine("▸ "+opt, panelW)))
+		} else {
+			rows = append(rows, fitLine("  "+g.st.text.Render(opt), panelW))
+		}
+	}
+	return strings.Join(rows, "\n")
 }
 
 // middleContent stacks the header line (selection glyph and name on the
@@ -452,15 +553,15 @@ func (g galleryModel) statusBar() string {
 	case g.mode == inputConfirmDelete:
 		chipStyle, chipLabel = g.st.chipAlert, "DELETE"
 		middleStyle = g.st.warning
-		middle = fmt.Sprintf("delete %q? [y/n]", g.deleteName)
+		middle = "↑/↓ select · enter confirm · esc cancel"
 	case g.list.FilterState() == list.Filtering:
 		chipLabel = "FILTER"
 		middle = "type to filter · enter apply · esc cancel"
 	case g.list.FilterState() == list.FilterApplied:
 		chipLabel = "FILTER"
-		middle = "enter play · esc clear · a add · r rename · d delete · k keybinds · ? help · q quit"
+		middle = "enter play · esc clear · a add · r rename · d delete · t theme · k keybinds · ? help · ctrl+c quit"
 	default:
-		middle = "enter play · a add · r rename · d delete · / filter · k keybinds · ? help · q quit"
+		middle = "enter play · a add · r rename · d delete · / filter · t theme · k keybinds · ? help · ctrl+c quit"
 	}
 	if g.status != "" {
 		middle, middleStyle = g.status, g.st.status

@@ -80,8 +80,8 @@ seek_back = []
 	if got := cfg.Keys.SeekBack; len(got) != len(def.SeekBack) || got[0] != def.SeekBack[0] {
 		t.Errorf("seek_back = %v, want default %v (explicit empty list falls back)", got, def.SeekBack)
 	}
-	if got := cfg.Keys.Next; len(got) != 1 || got[0] != "n" {
-		t.Errorf("next = %v, want default [n] (absent action keeps default)", got)
+	if got := cfg.Keys.Next; len(got) != 1 || got[0] != ">" {
+		t.Errorf("next = %v, want default [>] (absent action keeps default)", got)
 	}
 }
 

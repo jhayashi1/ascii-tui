@@ -159,7 +159,7 @@ func TestFormatSpeed(t *testing.T) {
 func TestPlayerSeekKeyStepsAndPauses(t *testing.T) {
 	m := step(t, fixtureModel(t), tea.KeyMsg{Type: tea.KeyEnter})
 	before := m.player.frame
-	m = step(t, m, keyRune('l'))
+	m = step(t, m, tea.KeyMsg{Type: tea.KeyRight})
 	if !m.player.paused {
 		t.Error("seeking forward did not pause playback")
 	}

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,7 +27,6 @@ type (
 // so rebinding them could lock the user out.
 var reservedKeys = map[string]string{
 	"esc":    "back",
-	"q":      "quit",
 	"ctrl+c": "quit",
 	"?":      "help",
 }
@@ -77,7 +77,7 @@ func newKeybindsKeyMap() keybindsKeyMap {
 		Default: key.NewBinding(key.WithKeys("D"), key.WithHelp("D", "reset all")),
 		Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Quit:    key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 	}
 }
 
@@ -103,14 +103,26 @@ const (
 )
 
 type keybindsModel struct {
-	keys    config.Keys
-	cursor  int
-	capture captureMode
-	status  string
-	st      styles
-	menu    keybindsKeyMap
-	width   int
-	height  int
+	keys      config.Keys
+	cursor    int
+	capture   captureMode
+	status    string
+	statusGen int
+	st        styles
+	menu      keybindsKeyMap
+	width     int
+	height    int
+}
+
+// flashStatus mirrors the gallery's: it shows a transient footer message
+// and returns a command that clears it after statusTimeout.
+func (k *keybindsModel) flashStatus(msg string) tea.Cmd {
+	k.status = msg
+	k.statusGen++
+	gen := k.statusGen
+	return tea.Tick(statusTimeout, func(time.Time) tea.Msg {
+		return clearKeybindsStatusMsg{gen: gen}
+	})
 }
 
 func newKeybinds(keys config.Keys, st styles) keybindsModel {
@@ -137,7 +149,7 @@ func (k keybindsModel) update(msg tea.Msg) (keybindsModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case keysSavedMsg:
 		if msg.err != nil {
-			k.status = fmt.Sprintf("save failed: %v", msg.err)
+			return k, (&k).flashStatus(fmt.Sprintf("save failed: %v", msg.err))
 		}
 		return k, nil
 
@@ -193,17 +205,14 @@ func (k keybindsModel) updateCapture(msg tea.KeyMsg) (keybindsModel, tea.Cmd) {
 	}
 	token := keyToken(pressed)
 	if action, ok := reservedKeys[pressed]; ok {
-		k.status = fmt.Sprintf("%q is reserved for %s", displayKey(token), action)
-		return k, nil
+		return k, (&k).flashStatus(fmt.Sprintf("%q is reserved for %s", displayKey(token), action))
 	}
 	if owner, ok := k.ownerOf(token); ok {
 		if owner == k.cursor && mode == captureAppend {
-			k.status = fmt.Sprintf("%q is already bound to %s", displayKey(token), keybindActions[owner].label)
-			return k, nil
+			return k, (&k).flashStatus(fmt.Sprintf("%q is already bound to %s", displayKey(token), keybindActions[owner].label))
 		}
 		if owner != k.cursor {
-			k.status = fmt.Sprintf("%q is taken by %s", displayKey(token), keybindActions[owner].label)
-			return k, nil
+			return k, (&k).flashStatus(fmt.Sprintf("%q is taken by %s", displayKey(token), keybindActions[owner].label))
 		}
 	}
 

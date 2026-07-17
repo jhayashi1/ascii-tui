@@ -47,14 +47,14 @@ type Keys struct {
 func DefaultKeys() Keys {
 	return Keys{
 		Pause:       []string{"space"},
-		SeekBack:    []string{"left", "h"},
-		SeekForward: []string{"right", "l"},
+		SeekBack:    []string{"left"},
+		SeekForward: []string{"right"},
 		StepBack:    []string{","},
 		StepForward: []string{"."},
 		SpeedUp:     []string{"+", "="},
 		SpeedDown:   []string{"-"},
-		Next:        []string{"n"},
-		Prev:        []string{"p"},
+		Next:        []string{">"},
+		Prev:        []string{"<"},
 		Filter:      []string{"f"},
 	}
 }
@@ -69,8 +69,11 @@ type Render struct {
 // Theme holds named colors; any value lipgloss.Color accepts (an ANSI
 // index, hex code, or name) is valid here. Bg, SelectionBg, and
 // ChipText additionally feed raw background escapes, which support ANSI
-// indexes and hex codes.
+// indexes and hex codes. Name records which built-in preset the colors
+// came from, so the gallery's theme switcher knows where to resume
+// cycling; it is empty when the file defines its own custom colors.
 type Theme struct {
+	Name        string `toml:"name,omitempty"`
 	Accent      string `toml:"accent"`
 	AccentAlt   string `toml:"accent_alt"`
 	Border      string `toml:"border"`
@@ -89,6 +92,7 @@ func Defaults() Config {
 		Playback: Playback{Speed: 1},
 		Keys:     DefaultKeys(),
 		Theme: Theme{
+			Name:        "pink",
 			Accent:      "212",
 			AccentAlt:   "179",
 			Border:      "240",

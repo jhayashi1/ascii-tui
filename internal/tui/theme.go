@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/jhayashi1/ascii-tui/internal/config"
 )
 
 // theme is a flat set of named colors. The foreground colors accept any
@@ -23,18 +25,71 @@ type theme struct {
 	ChipText  string
 }
 
+// namedTheme is a preset the gallery can cycle through with "t"; name is
+// stored in the config so cycling resumes where it left off across runs.
+type namedTheme struct {
+	name  string
+	theme theme
+}
+
+// themePresets are the built-in palettes, in cycle order. All share the
+// same dark slate background and neutral text/error colors, differing in
+// their accent so switching reads as a deliberate mood change. The first
+// entry is the default and must match config.Defaults().Theme.
+var themePresets = []namedTheme{
+	{"pink", theme{Accent: "212", AccentAlt: "179", Border: "240", Text: "252", Dim: "243", Error: "203", Bg: "234", SelBg: "237", ChipText: "234"}},
+	{"matrix", theme{Accent: "46", AccentAlt: "120", Border: "238", Text: "252", Dim: "243", Error: "203", Bg: "234", SelBg: "236", ChipText: "234"}},
+	{"amber", theme{Accent: "214", AccentAlt: "179", Border: "240", Text: "223", Dim: "243", Error: "203", Bg: "234", SelBg: "237", ChipText: "234"}},
+	{"ocean", theme{Accent: "39", AccentAlt: "45", Border: "240", Text: "252", Dim: "243", Error: "203", Bg: "234", SelBg: "237", ChipText: "234"}},
+}
+
 // defaultTheme keeps the app's pink accent on a dark slate background.
-func defaultTheme() theme {
+func defaultTheme() theme { return themePresets[0].theme }
+
+// themeIndexByName returns the preset index for a stored theme name, or
+// -1 when the name is empty or names no built-in preset (a custom
+// config). The first "t" press then advances to preset 0.
+func themeIndexByName(name string) int {
+	for i, p := range themePresets {
+		if p.name == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// themeFromConfig maps the flat config colors onto the tui theme; the two
+// structs are parallel but name their selection-background field
+// differently.
+func themeFromConfig(t config.Theme) theme {
 	return theme{
-		Accent:    "212",
-		AccentAlt: "179",
-		Border:    "240",
-		Text:      "252",
-		Dim:       "243",
-		Error:     "203",
-		Bg:        "234",
-		SelBg:     "237",
-		ChipText:  "234",
+		Accent:    t.Accent,
+		AccentAlt: t.AccentAlt,
+		Border:    t.Border,
+		Text:      t.Text,
+		Dim:       t.Dim,
+		Error:     t.Error,
+		Bg:        t.Bg,
+		SelBg:     t.SelectionBg,
+		ChipText:  t.ChipText,
+	}
+}
+
+// configTheme is themeFromConfig's inverse: it flattens a preset back
+// into the serializable config shape, tagging it with the preset name so
+// the switcher resumes cycling from here next run.
+func (n namedTheme) configTheme() config.Theme {
+	return config.Theme{
+		Name:        n.name,
+		Accent:      n.theme.Accent,
+		AccentAlt:   n.theme.AccentAlt,
+		Border:      n.theme.Border,
+		Text:        n.theme.Text,
+		Dim:         n.theme.Dim,
+		Error:       n.theme.Error,
+		Bg:          n.theme.Bg,
+		SelectionBg: n.theme.SelBg,
+		ChipText:    n.theme.ChipText,
 	}
 }
 

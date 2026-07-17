@@ -32,6 +32,10 @@ type (
 		err       error
 	}
 	backToGalleryMsg struct{}
+	// cycleThemeMsg asks the app to advance to the next built-in theme;
+	// themeSavedMsg reports whether persisting that choice succeeded.
+	cycleThemeMsg struct{}
+	themeSavedMsg struct{ err error }
 )
 
 type model struct {
@@ -42,6 +46,7 @@ type model struct {
 	keybinds    keybindsModel
 	st          styles
 	cfg         config.Config
+	themeIndex  int
 	helpVisible bool
 	width       int
 	height      int
@@ -50,22 +55,12 @@ type model struct {
 // Run starts the interactive TUI over the given library directory,
 // using cfg for the theme and playback/render defaults.
 func Run(libraryDir string, cfg config.Config) error {
-	st := newStyles(theme{
-		Accent:    cfg.Theme.Accent,
-		AccentAlt: cfg.Theme.AccentAlt,
-		Border:    cfg.Theme.Border,
-		Text:      cfg.Theme.Text,
-		Dim:       cfg.Theme.Dim,
-		Error:     cfg.Theme.Error,
-		Bg:        cfg.Theme.Bg,
-		SelBg:     cfg.Theme.SelectionBg,
-		ChipText:  cfg.Theme.ChipText,
-	})
+	st := newStyles(themeFromConfig(cfg.Theme))
 	gallery, err := newGallery(libraryDir, st)
 	if err != nil {
 		return err
 	}
-	m := model{gallery: gallery, st: st, cfg: cfg}
+	m := model{gallery: gallery, st: st, cfg: cfg, themeIndex: themeIndexByName(cfg.Theme.Name)}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
@@ -110,13 +105,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case renderDoneMsg:
 		if msg.err != nil {
 			m.screen = screenGallery
-			m.gallery.status = fmt.Sprintf("render failed: %v", msg.err)
-			return m, nil
+			return m, m.gallery.flashStatus(fmt.Sprintf("render failed: %v", msg.err))
 		}
 		if err := m.gallery.reload(); err != nil {
 			m.screen = screenGallery
-			m.gallery.status = err.Error()
-			return m, nil
+			return m, m.gallery.flashStatus(err.Error())
 		}
 		entries := m.gallery.entries()
 		index := indexOfPath(entries, msg.savedPath)
@@ -139,10 +132,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cfg := m.cfg
 		return m, func() tea.Msg { return keysSavedMsg{err: config.Save(cfg)} }
 
+	case cycleThemeMsg:
+		// Advance to the next preset (an unknown/custom starting theme has
+		// index -1, so the first press lands on preset 0), repaint the
+		// gallery live, and persist the choice so it survives restarts.
+		m.themeIndex = (m.themeIndex + 1) % len(themePresets)
+		preset := themePresets[m.themeIndex]
+		m.st = newStyles(preset.theme)
+		m.cfg.Theme = preset.configTheme()
+		m.gallery.setStyles(m.st)
+		flash := m.gallery.flashStatus("theme: " + preset.name)
+		cfg := m.cfg
+		return m, tea.Batch(flash, func() tea.Msg { return themeSavedMsg{err: config.Save(cfg)} })
+
+	case themeSavedMsg:
+		if msg.err != nil {
+			return m, m.gallery.flashStatus(fmt.Sprintf("theme save failed: %v", msg.err))
+		}
+		return m, nil
+
+	case clearGalleryStatusMsg:
+		if msg.gen == m.gallery.statusGen {
+			m.gallery.status = ""
+		}
+		return m, nil
+
+	case clearKeybindsStatusMsg:
+		if msg.gen == m.keybinds.statusGen {
+			m.keybinds.status = ""
+		}
+		return m, nil
+
 	case backToGalleryMsg:
 		m.screen = screenGallery
 		if err := m.gallery.reload(); err != nil {
-			m.gallery.status = err.Error()
+			return m, m.gallery.flashStatus(err.Error())
 		}
 		return m, m.gallery.reconcilePreview()
 	}
