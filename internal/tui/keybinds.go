@@ -251,7 +251,10 @@ func (k keybindsModel) view() string {
 		if i == k.cursor {
 			rows = append(rows, k.st.selBarText.Render(fitLine("▸ "+line, panelW)))
 		} else {
-			rows = append(rows, "  "+k.st.text.Render(label)+k.st.accent.Render(truncateLabel(keysText, max(0, panelW-labelW-2))))
+			// Pad to panelW: lipgloss.Place centers each line on its own, so
+			// rows must share one width to stay left-aligned as a block.
+			row := "  " + k.st.text.Render(label) + k.st.accent.Render(truncateLabel(keysText, max(0, panelW-labelW-2)))
+			rows = append(rows, fitLine(row, panelW))
 		}
 	}
 	panel := strings.Join(rows, "\n")
