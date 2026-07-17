@@ -203,6 +203,26 @@ func headerLine(name string, width int, st styles) string {
 		st.accent.Render(brandIcon) + " " + st.headerName.Render(brandName)
 }
 
+// columnRule is the gutter between gallery columns: a full-height
+// vertical rule in the theme border color with one space of padding on
+// each side, colGutter columns wide.
+func columnRule(height int, st styles) string {
+	rows := make([]string, max(1, height))
+	for i := range rows {
+		rows[i] = " " + st.rule.Render("│") + " "
+	}
+	return strings.Join(rows, "\n")
+}
+
+// horizontalRule renders a full-width "────" line in the theme border
+// color, separating the body from the status bar.
+func horizontalRule(width int, st styles) string {
+	if width <= 0 {
+		return ""
+	}
+	return st.rule.Render(strings.Repeat("─", width))
+}
+
 // sectionRule renders "LABEL ────" to at most width columns: an
 // uppercase gold label with a dim rule filling the remainder.
 func sectionRule(label string, width int, st styles) string {

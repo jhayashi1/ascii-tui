@@ -30,8 +30,8 @@ func TestGalleryColumnDimsDegradesGracefully(t *testing.T) {
 	if leftW+colGutter+midW != 80 {
 		t.Errorf("leftW+gutter+midW = %d, want 80", leftW+colGutter+midW)
 	}
-	if bodyH != 23 {
-		t.Errorf("bodyH = %d, want 23", bodyH)
+	if bodyH != 22 {
+		t.Errorf("bodyH = %d, want 22", bodyH)
 	}
 
 	// 120 cols: all three columns.

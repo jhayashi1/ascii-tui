@@ -41,7 +41,7 @@ const (
 	minPreviewHeight   = 12
 	detailWidth        = 26
 	minMiddleForDetail = 32
-	colGutter          = 2
+	colGutter          = 3
 )
 
 type entryItem struct{ library.Entry }
@@ -161,11 +161,12 @@ func (g galleryModel) selectedEntry() (library.Entry, bool) {
 }
 
 // columnDims computes the widths of the library, preview, and detail
-// columns plus the shared body height (one row is reserved for the
-// status bar). Space is given up gracefully: the detail column drops
-// first, then the preview, leaving a full-width list.
+// columns plus the shared body height (two rows are reserved: the
+// footer rule and the status bar). Space is given up gracefully: the
+// detail column drops first, then the preview, leaving a full-width
+// list.
 func (g galleryModel) columnDims() (leftW, midW, rightW, bodyH int, showPreview, showDetail bool) {
-	bodyH = max(1, g.height-1)
+	bodyH = max(1, g.height-2)
 	if g.width < minPreviewWidth || g.height < minPreviewHeight {
 		return g.width, 0, 0, bodyH, false, false
 	}
@@ -504,7 +505,7 @@ func (g galleryModel) view() string {
 	}
 
 	body := renderColumn("library", left, leftW, bodyH, g.st)
-	gutter := strings.Repeat(" ", colGutter)
+	gutter := columnRule(bodyH, g.st)
 	if showPreview {
 		mid := renderColumn("", g.middleContent(midW), midW, bodyH, g.st)
 		body = lipgloss.JoinHorizontal(lipgloss.Top, body, gutter, mid)
@@ -514,15 +515,15 @@ func (g galleryModel) view() string {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, body, gutter, detail)
 	}
 
-	return body + "\n" + g.statusBar()
+	return body + "\n" + horizontalRule(g.width, g.st) + "\n" + g.statusBar()
 }
 
 // deleteMenuView centers the confirmation panel over the body, keeping
-// the shared status bar on the bottom row.
+// the footer rule and shared status bar on the bottom rows.
 func (g galleryModel) deleteMenuView() string {
-	bodyH := max(1, g.height-1)
+	bodyH := max(1, g.height-2)
 	panel := lipgloss.Place(max(1, g.width), bodyH, lipgloss.Center, lipgloss.Center, g.deleteMenuPanel())
-	return panel + "\n" + g.statusBar()
+	return panel + "\n" + horizontalRule(g.width, g.st) + "\n" + g.statusBar()
 }
 
 // deleteMenuPanel builds the centered menu: a warning-styled question
