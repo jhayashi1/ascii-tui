@@ -104,14 +104,14 @@ func TestPlayerStepFramePausesAndWraps(t *testing.T) {
 
 func TestPlayerAdjustSpeedClampsRange(t *testing.T) {
 	p := newTestPlayer(t, []time.Duration{time.Second})
-	for range 20 {
+	for range 40 {
 		p.adjustSpeed(speedStep)
 	}
 	if p.speed != maxSpeed {
 		t.Errorf("speed = %v, want clamped to %v", p.speed, maxSpeed)
 	}
-	for range 40 {
-		p.adjustSpeed(1 / speedStep)
+	for range 80 {
+		p.adjustSpeed(-speedStep)
 	}
 	if p.speed != minSpeed {
 		t.Errorf("speed = %v, want clamped to %v", p.speed, minSpeed)
@@ -179,12 +179,12 @@ func TestPlayerStepKeyPauses(t *testing.T) {
 func TestPlayerSpeedKeysAdjustSpeed(t *testing.T) {
 	m := step(t, fixtureModel(t), tea.KeyMsg{Type: tea.KeyEnter})
 	m = step(t, m, keyRune('+'))
-	if m.player.speed <= 1 {
-		t.Errorf("speed after '+' = %v, want > 1", m.player.speed)
+	if m.player.speed != 1.25 {
+		t.Errorf("speed after '+' = %v, want 1.25", m.player.speed)
 	}
 	m = step(t, m, keyRune('-'))
 	m = step(t, m, keyRune('-'))
-	if m.player.speed >= 1 {
-		t.Errorf("speed after '+' '-' '-' = %v, want < 1", m.player.speed)
+	if m.player.speed != 0.75 {
+		t.Errorf("speed after '+' '-' '-' = %v, want 0.75", m.player.speed)
 	}
 }
