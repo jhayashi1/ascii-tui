@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/jhayashi1/ascii-tui/internal/export"
 	"github.com/jhayashi1/ascii-tui/internal/library"
 )
 
@@ -319,6 +320,14 @@ func (g galleryModel) updateInner(msg tea.Msg) (galleryModel, tea.Cmd) {
 				g.layout()
 			}
 			return g, nil
+		case key.Matches(keyMsg, g.keys.Export):
+			if entry, ok := g.selectedEntry(); ok {
+				return g, tea.Batch(
+					(&g).flashStatus(fmt.Sprintf("exporting %s...", entry.Name)),
+					exportEntry(entry),
+				)
+			}
+			return g, nil
 		case key.Matches(keyMsg, g.keys.Theme):
 			return g, func() tea.Msg { return cycleThemeMsg{} }
 		case key.Matches(keyMsg, g.keys.Keybinds):
@@ -434,6 +443,24 @@ func (g galleryModel) updateConfirmDelete(msg tea.Msg) (galleryModel, tea.Cmd) {
 		}
 	}
 	return g, nil
+}
+
+// exportEntry loads the entry off the UI loop and writes it as a GIF
+// into the directory the app was launched from; the result lands back
+// in the gallery's status bar via exportDoneMsg.
+func exportEntry(entry library.Entry) tea.Cmd {
+	return func() tea.Msg {
+		anim, err := library.Load(entry.Path)
+		if err != nil {
+			return exportDoneMsg{err: err}
+		}
+		dir, err := os.Getwd()
+		if err != nil {
+			return exportDoneMsg{err: err}
+		}
+		path, err := export.Save(dir, entry.Name, anim)
+		return exportDoneMsg{path: path, err: err}
+	}
 }
 
 // commitRename renames the selected entry and keeps it selected, since
@@ -559,9 +586,9 @@ func (g galleryModel) statusBar() string {
 		middle = "type to filter · enter apply · esc cancel"
 	case g.list.FilterState() == list.FilterApplied:
 		chipLabel = "FILTER"
-		middle = "enter play · esc clear · a add · r rename · d delete · t theme · k keybinds · ? help · ctrl+c quit"
+		middle = "enter play · esc clear · a add · r rename · d delete · e export · t theme · k keybinds · ? help"
 	default:
-		middle = "enter play · a add · r rename · d delete · / filter · t theme · k keybinds · ? help · ctrl+c quit"
+		middle = "enter play · a add · r rename · d delete · e export · / filter · t theme · k keybinds · ? help"
 	}
 	if g.status != "" {
 		middle, middleStyle = g.status, g.st.status

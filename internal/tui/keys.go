@@ -22,6 +22,7 @@ type galleryKeyMap struct {
 	Add      key.Binding
 	Rename   key.Binding
 	Delete   key.Binding
+	Export   key.Binding
 	Filter   key.Binding
 	Theme    key.Binding
 	Keybinds key.Binding
@@ -35,6 +36,7 @@ func newGalleryKeyMap() galleryKeyMap {
 		Add:      key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add gif")),
 		Rename:   key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rename")),
 		Delete:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+		Export:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "export gif")),
 		Filter:   key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
 		Theme:    key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "theme")),
 		Keybinds: key.NewBinding(key.WithKeys("k"), key.WithHelp("k", "keybinds")),
@@ -44,12 +46,12 @@ func newGalleryKeyMap() galleryKeyMap {
 }
 
 func (k galleryKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Play, k.Add, k.Rename, k.Delete, k.Theme, k.Keybinds, k.Help, k.Quit}
+	return []key.Binding{k.Play, k.Add, k.Rename, k.Delete, k.Export, k.Theme, k.Keybinds, k.Help, k.Quit}
 }
 
 func (k galleryKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Play, k.Add, k.Rename, k.Delete},
+		{k.Play, k.Add, k.Rename, k.Delete, k.Export},
 		{k.Filter, k.Theme, k.Keybinds, k.Help, k.Quit},
 	}
 }

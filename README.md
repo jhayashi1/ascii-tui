@@ -31,6 +31,10 @@ ascii-tui render animation.gif --filter-bg
 # Play a frames file (or a gif, rendered on the fly)
 ascii-tui play animation.frames
 ascii-tui play animation.frames --once --speed 2
+
+# Export a rendered animation back out as a real GIF of the ASCII art
+ascii-tui export animation.frames
+ascii-tui export animation.frames -o ascii-art.gif
 ```
 
 The gallery is a three-column layout: the library list on the left, a live
@@ -55,6 +59,7 @@ either screen for a full key reference; any key closes it.
 | `a` | render a new gif into the library |
 | `r` | rename the selected entry |
 | `d` | delete, via a centered confirmation menu (↑/↓ select, enter confirm, esc cancel) |
+| `e` | export the selected entry as a GIF into the current directory |
 | `/` | filter the list |
 | `t` | cycle the color theme (saved to the config file) |
 | `k` | configure player keybinds |

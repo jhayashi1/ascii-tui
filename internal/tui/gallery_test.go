@@ -1,7 +1,11 @@
 package tui
 
 import (
+	"bytes"
+	"image/gif"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -114,6 +118,40 @@ func TestGalleryPreviewReloadsAfterReturningFromPlayer(t *testing.T) {
 	}
 	if meta, ok := m.gallery.preview.currentMeta(); !ok || meta.name != "first" {
 		t.Errorf("preview meta after returning from player = %+v (loaded=%v), want name %q", meta, ok, "first")
+	}
+}
+
+// TestGalleryExportWritesGif presses e on the selected entry and checks
+// a decodable GIF lands in the working directory, that the status bar
+// reports it, and that a second export gets a -2 suffix instead of
+// overwriting.
+func TestGalleryExportWritesGif(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	m := fixtureModel(t)
+
+	m = step(t, m, keyRune('e'))
+	if !strings.Contains(m.gallery.status, "exported to") {
+		t.Fatalf("status = %q, want export confirmation", m.gallery.status)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "first.gif"))
+	if err != nil {
+		t.Fatalf("reading exported gif: %v", err)
+	}
+	decoded, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("exported file is not a valid gif: %v", err)
+	}
+	if len(decoded.Image) != 2 {
+		t.Errorf("exported frame count = %d, want 2", len(decoded.Image))
+	}
+
+	m = step(t, m, keyRune('e'))
+	if _, err := os.Stat(filepath.Join(dir, "first-2.gif")); err != nil {
+		t.Errorf("second export did not create first-2.gif: %v", err)
+	}
+	if !strings.Contains(m.gallery.status, "first-2.gif") {
+		t.Errorf("status = %q, want the suffixed path", m.gallery.status)
 	}
 }
 

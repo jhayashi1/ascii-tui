@@ -32,6 +32,12 @@ type (
 		err       error
 	}
 	backToGalleryMsg struct{}
+	// exportDoneMsg reports the result of a background GIF export
+	// started from the gallery.
+	exportDoneMsg struct {
+		path string
+		err  error
+	}
 	// cycleThemeMsg asks the app to advance to the next built-in theme;
 	// themeSavedMsg reports whether persisting that choice succeeded.
 	cycleThemeMsg struct{}
@@ -144,6 +150,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		flash := m.gallery.flashStatus("theme: " + preset.name)
 		cfg := m.cfg
 		return m, tea.Batch(flash, func() tea.Msg { return themeSavedMsg{err: config.Save(cfg)} })
+
+	case exportDoneMsg:
+		if msg.err != nil {
+			return m, m.gallery.flashStatus(fmt.Sprintf("export failed: %v", msg.err))
+		}
+		return m, m.gallery.flashStatus("exported to " + msg.path)
 
 	case themeSavedMsg:
 		if msg.err != nil {
