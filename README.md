@@ -6,6 +6,22 @@ Animations are pre-rendered once into a portable `.frames` file, so playback
 is instant and works on any machine with a truecolor terminal, no conversion
 step required.
 
+<table align="center">
+  <tr>
+    <th>Original</th>
+    <th>ascii-tui</th>
+  </tr>
+  <tr>
+    <td><img src="gifs/duck.gif" height="220" alt="original duck GIF" /></td>
+    <td><img src="demo/duck.gif" height="220" alt="ascii-tui playing the duck animation" /></td>
+  </tr>
+  <tr>
+    <td><img src="gifs/deer.gif" height="220" alt="original deer GIF" /></td>
+    <td><img src="demo/deer.gif" height="220" alt="ascii-tui playing the deer animation" /></td>
+  </tr>
+</table>
+<p align="center"><sub>Demo source GIFs: <a href="https://giphy.com/gifs/hamlet-duck-dance-PQHZH0iHMCmrNhRcE9">duck</a> · <a href="https://giphy.com/gifs/loop-stag-l1KdbPzEUJ5ife8Ra">deer</a>, via Giphy</sub></p>
+
 ## Install
 
 ```sh
